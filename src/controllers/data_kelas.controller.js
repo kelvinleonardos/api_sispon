@@ -151,10 +151,17 @@ export class DataKelasController {
 
       res.json({
         success: true,
-        message: 'Data kelas deleted successfully'
+        message: 'Data kelas berhasil dihapus'
       });
     } catch (error) {
-      next(error)
+      let e = error;
+      if (error.code === 'P2003' || error.message.includes('Foreign key constraint')) {
+        e = {
+            status: 400,
+            message: 'Data kelas tidak dapat dihapus karena masih digunakan dalam data lain'
+        }
+      }
+      next(e);
     }
   }
 

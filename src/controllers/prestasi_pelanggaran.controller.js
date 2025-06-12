@@ -54,14 +54,6 @@ export class PrestasiPelanggaranController {
                 });
             }
 
-            // Validasi enum tipe_pelanggaran jika perihal adalah pelanggaran
-            if (perihal === 'pelanggaran' && tipe_pelanggaran && !['Sekolah', 'Asrama'].includes(tipe_pelanggaran)) {
-                return res.status(400).json({
-                    status: 'error',
-                    message: 'Tipe pelanggaran harus Sekolah atau Asrama'
-                });
-            }
-
             // Buat data baru
             const newData = await prisma.data_prestasi_pelanggaran.create({
                 data: {
@@ -83,6 +75,7 @@ export class PrestasiPelanggaranController {
                 data: newData
             });
         } catch (error) {
+            console.log(error);
             next(error);
         }
     };
@@ -215,6 +208,94 @@ export class PrestasiPelanggaranController {
             next(error);
         }
     };
+
+    static getPrestasiPelanggaranBySantri = async (req, res, next) => {
+        try {
+            const { id_santri } = req.params;
+            const { type, cat } = req.query;
+            const { semester, tahunAjaran } = await getTokenPayload(req);
+
+            const santri = await prisma.santri.findUnique({
+                where: { id: parseInt(id_santri) },
+                include: {
+                    data_rombel_anggota: {
+                        where: {
+                            data_rombel: {
+                                id_tahun_ajaran: tahunAjaran.id,
+                            },
+                        },
+                        include: {
+                            data_rombel: {
+                                include: {
+                                    ref_kelas: true,
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+
+            if (!santri) {
+                return res.status(404).json({ message: "Santri tidak ditemukan" });
+            }
+
+            const prestasiPelanggaranWhere = {
+                id_santri: parseInt(id_santri),
+            };
+
+            // Filter berdasarkan lokasi (asrama/sekolah)
+            if (type && type !== "all") {
+                if (type === "asrama") {
+                    prestasiPelanggaranWhere.id_basis_lokasi = 25;
+                } else if (type === "sekolah") {
+                    prestasiPelanggaranWhere.id_basis_lokasi = 26;
+                }
+            }
+
+            // Filter berdasarkan kategori (prestasi/pelanggaran)
+            if (cat === "pr") {
+                prestasiPelanggaranWhere.perihal = "prestasi";
+            } else if (cat === "pl") {
+                prestasiPelanggaranWhere.perihal = "pelanggaran";
+            }
+
+            const prestasiPelanggaranList = await prisma.data_prestasi_pelanggaran.findMany({
+                where: prestasiPelanggaranWhere,
+                include: {
+                    ref_master_kategori: true,
+                },
+            });
+
+            // Format list jadi lebih simpel
+            const formattedList = prestasiPelanggaranList.map((item) => ({
+                id: item.id,
+                perihal: item.perihal,
+                judul: item.judul,
+                capaian: item.capaian,
+                tanggal: item.tanggal,
+                tempat: item.tempat,
+                deskripsi: item.deskripsi,
+                tipe: item.ref_master_kategori?.nama || null,
+                bukti: item.bukti,
+                resolusi: item.resolusi,
+                jenis_pelanggaran: item.jenis_pelanggaran,
+            }));
+
+            const result = {
+                id: santri.id,
+                nis: santri.nis,
+                nama: santri.nama,
+                kelas: santri.data_rombel_anggota?.[0]?.data_rombel?.ref_kelas?.kelas || "-",
+                prestasi_pelanggaran: formattedList,
+            };
+
+            res.status(200).json(result);
+        } catch (error) {
+            console.error(error);
+            next(error);
+        }
+    };
+
 
     static getPrestasiSantri = async (req, res, next) => {
         try {
@@ -425,9 +506,10 @@ export class PrestasiPelanggaranController {
             let file_bukti_list = existingRecord.bukti ? existingRecord.bukti.split(',') : [];
             if (file_bukti.length > 0) {
                 const newFiles = file_bukti.map((file) =>
-                    `/uploads/bukti-prpl/${perihal || existingRecord.perihal === 'prestasi' ? 'prestasi' : 'pelanggaran'}/${file.filename}`
+                    `/uploads/bukti-prpl/${existingRecord.perihal === 'prestasi' ? 'prestasi' : 'pelanggaran'}/${file.filename}`
                 );
                 file_bukti_list = [...file_bukti_list, ...newFiles];
+                console.log(file_bukti_list);
             }
 
             // Siapkan data untuk update

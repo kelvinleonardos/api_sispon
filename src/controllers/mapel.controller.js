@@ -3,7 +3,7 @@ import { prisma } from "../prisma.js";
 export class MapelController {
   static createMapel = async (req, res, next) => {
     try {
-      const { nama, keterangan, nama_arab, id_pengajar, id_master_kategori_ref_mapel, id_kurikulum } = req.body;
+      const { nama, keterangan, nama_arab, id_pengajar, id_master_kategori_ref_mapel, id_kurikulum, jenis_nilai } = req.body;
       const { idkur } = req.params;
 
       // Determine id_kurikulum (prioritize body, fallback to params)
@@ -119,7 +119,8 @@ export class MapelController {
           nama_arab,
           id_pengajar: id_pengajar ? parseInt(id_pengajar) : null,
           id_master_kategori_ref_mapel: parseInt(id_master_kategori_ref_mapel),
-          id_kurikulum: finalIdKurikulum
+          id_kurikulum: finalIdKurikulum,
+          jenis_nilai
         }
       });
 
@@ -177,6 +178,19 @@ export class MapelController {
 
       // Siapkan where clause untuk mapel
       const mapelWhereClause = {};
+
+      const mapel_kategori = await prisma.ref_master_kategori.findMany({
+        where: {
+          tipe: 'mapel',
+        },
+      });
+
+      const mapel_kategori_ids = mapel_kategori.map(kategori => kategori.id);
+
+      mapelWhereClause.id_master_kategori_ref_mapel = {
+        in: mapel_kategori_ids,
+      };
+
       if (kategori) {
         mapelWhereClause.id_master_kategori_ref_mapel = parseInt(tipe);
       }
@@ -257,6 +271,18 @@ export class MapelController {
 
       // Siapkan where clause untuk mapel
       const mapelWhereClause = {};
+      const mapel_kategori = await prisma.ref_master_kategori.findMany({
+        where: {
+          tipe: 'mapel',
+        },
+      });
+
+      const mapel_kategori_ids = mapel_kategori.map(kategori => kategori.id);
+
+      mapelWhereClause.id_master_kategori_ref_mapel = {
+        in: mapel_kategori_ids,
+      };
+
       if (kategori) {
         mapelWhereClause.id_master_kategori_ref_mapel = parseInt(tipe);
       }
@@ -271,7 +297,13 @@ export class MapelController {
               ref_tingkat: true,
               data_kompetensi_dasar: true
             }
-          }
+          },
+          data_kkm_detail: {
+            include: {
+              ref_tingkat: true,
+            }
+          },
+          ref_kurikulum: true
         },
       });
 
@@ -293,10 +325,13 @@ export class MapelController {
                   }))
                 }));
 
+
+
             return {
               id_mapel: mapel.id,
               kode: mapel.kode,
               nama: mapel.nama,
+              kurikulum: mapel.ref_kurikulum.nama,
               id_kurikulum: mapel.id_kurikulum,
               guru: mapel.guru_pegawai ? mapel.guru_pegawai.nama_gp : null,
               kompetensi: kompetensi || [],
@@ -306,6 +341,7 @@ export class MapelController {
 
       res.json(flatMapel);
     } catch (error) {
+      console.log(error);
       next(error);
     }
   };
@@ -417,9 +453,12 @@ export class MapelController {
         id_mapel: mapel.id,
         kode: mapel.kode,
         nama: mapel.nama,
+        id_kategori: mapel.id_master_kategori_ref_mapel,
         kategori: mapel.ref_master_kategori_ref_mapel?.nama || null,
         id_kurikulum: mapel.id_kurikulum,
+        id_guru: mapel.id_pengajar,
         guru: mapel.guru_pegawai ? mapel.guru_pegawai.nama_gp : null,
+        jenis_nilai: mapel.jenis_nilai || null,
         kompetensi: kompetensi || [],
         kkm: kkm || [],
       };
@@ -566,7 +605,7 @@ export class MapelController {
   static updateMapel = async (req, res, next) => {
     try {
       const { id } = req.params;
-      const { kode, nama, keterangan, nama_arab, id_pengajar, id_master_kategori_ref_mapel, id_kurikulum } = req.body;
+      const { kode, nama, keterangan, nama_arab, id_pengajar, id_master_kategori_ref_mapel, id_kurikulum, jenis_nilai } = req.body;
       const { idkur } = req.params;
 
       // Determine id_kurikulum (prioritize body, fallback to params)
@@ -663,7 +702,8 @@ export class MapelController {
           nama_arab,
           id_pengajar: id_pengajar ? parseInt(id_pengajar) : null,
           id_master_kategori_ref_mapel: id_master_kategori_ref_mapel ? parseInt(id_master_kategori_ref_mapel) : null,
-          id_kurikulum: finalIdKurikulum
+          id_kurikulum: finalIdKurikulum,
+          jenis_nilai
         }
       });
 
@@ -678,42 +718,57 @@ export class MapelController {
 
   static deleteMapel = async (req, res, next) => {
     try {
-      const { id } = req.params;
-      const { idkur } = req.params;
+      const { id, idkur } = req.params;
 
-      // Determine id_kurikulum (prioritize params if provided)
-      let finalIdKurikulum = idkur ? parseInt(idkur) : null;
-      if (!finalIdKurikulum) {
+      // Validasi ID mapel
+      const mapelId = parseInt(id);
+      if (isNaN(mapelId)) {
         return res.status(400).json({
           success: false,
-          message: "idkur is required in params"
+          message: "ID mapel tidak valid",
         });
       }
 
-      // Check if mapel exists
-      const existingMapel = await prisma.ref_mapel.findFirst({
-        where: {
-          id: parseInt(id),
-          id_kurikulum: finalIdKurikulum
+      // Validasi ID kurikulum jika diberikan
+      let kurikulumId = null;
+      if (idkur) {
+        kurikulumId = parseInt(idkur);
+        if (isNaN(kurikulumId)) {
+          return res.status(400).json({
+            success: false,
+            message: "ID kurikulum tidak valid",
+          });
         }
+      }
+
+      // Cek apakah mapel ada
+      const whereClause = { id: mapelId };
+      if (kurikulumId !== null) {
+        whereClause.id_kurikulum = kurikulumId;
+      }
+
+      const existingMapel = await prisma.ref_mapel.findFirst({
+        where: whereClause,
       });
 
       if (!existingMapel) {
         return res.status(404).json({
           success: false,
-          message: "Subject not found"
+          message: "Mata pelajaran tidak ditemukan",
         });
       }
 
+      // Hapus mapel
       await prisma.ref_mapel.delete({
-        where: { id: parseInt(id) }
+        where: { id: mapelId },
       });
 
-      res.json({
+      return res.status(200).json({
         success: true,
-        message: "Subject deleted successfully"
+        message: "Mata pelajaran berhasil dihapus",
       });
     } catch (error) {
+      console.error(`Error deleting mapel ID ${req.params.id}:`, error);
       next(error);
     }
   };

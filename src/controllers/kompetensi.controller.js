@@ -1,6 +1,39 @@
 import { prisma } from '../prisma.js';
 
 export class KompetensiController {
+
+  static async getMapelKD(req, res, next) {
+    try {
+      const { id_mapel, id_tingkat } = req.params;
+
+      const dataKI = await prisma.data_kompetensi_inti.findMany({
+        where: {
+          id_mapel: parseInt(id_mapel),
+          id_tingkat: parseInt(id_tingkat),
+        },
+        include: {
+          data_kompetensi_dasar: true,
+        },
+      });
+
+      // Flatten semua KD dari setiap KI
+      const allKD = dataKI.flatMap(ki =>
+          ki.data_kompetensi_dasar.map(kd => ({
+            ...kd,
+            kode_ki: ki.kode_ki, // kalau kamu mau ikut tampilkan kode KI-nya
+          }))
+      );
+
+      // Urutkan berdasarkan kode_kd
+      allKD.sort((a, b) => a.kode_kd.localeCompare(b.kode_kd));
+
+      res.json(allKD);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+
   static async createMapelKI(req, res, next) {
     try {
       const { id_mapel, deskripsi, kode_ki, kelompok, id_tingkat } = req.body;

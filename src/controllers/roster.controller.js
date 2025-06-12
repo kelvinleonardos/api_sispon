@@ -63,23 +63,41 @@ export class RosterController {
     static async getAllRoster(req, res, next) {
         try {
             const { decoded, semester, tahunAjaran } = await getTokenPayload(req);
-            const { groupBy, class: classId, day } = req.query;
+            const { groupBy, class: className, day } = req.query;
 
             // Define all possible days and time slots to ensure complete data
             const days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Ahad'];
             const timeSlots = await prisma.ref_jam_pelajaran.findMany({
-                orderBy: { id: 'asc' }
+                orderBy: { jam_ke: 'asc' }
             });
+
+            let ref_kelas = null;
+
+            if (className) {
+                ref_kelas = await prisma.ref_kelas.findFirst({
+                    where: {
+                        kelas: className
+                    }
+                });
+            }
 
             // Fetch all rombels for the semester and year
             const rombels = await prisma.data_rombel.findMany({
                 where: {
                     id_tahun_ajaran: semester.id_tahun_ajaran,
-                    id: classId ? parseInt(classId) : undefined
+                    id_kelas: ref_kelas ? parseInt(ref_kelas.id) : undefined
                 },
                 include: {
                     ref_master_kategori: true,
-                    ref_kelas: true
+                    ref_kelas: {
+                        include: {
+                            ref_tingkat: {
+                                include: {
+                                    ref_jenjang: true
+                                }
+                            }
+                        }
+                    }
                 },
                 orderBy: [
                     { ref_kelas: { id_tingkat: 'asc' } },
@@ -94,6 +112,7 @@ export class RosterController {
                     ...rest,
                     status: ref_master_kategori.nama,
                     kelas: ref_kelas.kelas,
+                    id_jenjang: ref_kelas.ref_tingkat.id_jenjang,
                 };
             });
 
@@ -112,13 +131,25 @@ export class RosterController {
                 const rosters = await prisma.data_roster.findMany({
                     where: whereClause,
                     include: {
-                        ref_jam_pelajaran: true,
+                        ref_jam_pelajaran: {
+                            include: {
+                                ref_jenjang: true
+                            }
+                        },
                         data_kelas: {
                             include: {
                                 data_rombel: {
                                     include: {
                                         ref_master_kategori: true,
-                                        ref_kelas: true
+                                        ref_kelas: {
+                                            include: {
+                                                ref_tingkat: {
+                                                    include: {
+                                                        ref_jenjang: true
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 },
                                 ref_mapel: {
@@ -137,32 +168,46 @@ export class RosterController {
 
                 // Structure data: rombels on y-axis, time slots on x-axis
                 const result = mappedRombels.map(rombel => {
-                    const rombelData = timeSlots.map(slot => {
+                    // Ambil hanya slot yang sesuai jenjang
+                    const filteredTimeSlots = timeSlots.filter(slot => slot.id_jenjang === rombel.id_jenjang);
+
+                    // Mapping data roster berdasarkan slot yang sesuai jenjang
+                    const rombelData = filteredTimeSlots.map(slot => {
                         const roster = rosters.find(r =>
                             r.data_kelas.id_rombel === rombel.id &&
                             r.hari === day &&
-                            r.id_jam === slot.id
+                            r.id_jam === slot.id &&
+                            r.data_kelas.data_rombel.ref_kelas.ref_tingkat.id_jenjang === rombel.id_jenjang
                         );
+
                         const simplifiedRoster = roster ? {
+                            id_jam: roster.id_jam,
                             id_roster: roster.id,
                             mapel: roster.data_kelas.ref_mapel.nama,
                             guru: roster.data_kelas.ref_mapel.guru_pegawai.nama_gp
                         } : null;
-                        return simplifiedRoster || null; // Return null if no data for this slot
+
+                        return simplifiedRoster;
                     });
+
                     return {
                         rombel: {
                             id: rombel.id,
                             status: rombel.status,
                             kelas: rombel.kelas
                         },
-                        timeSlots: rombelData
+                        timeSlots: filteredTimeSlots.map(slot => ({
+                            id_jam: slot.id,
+                            jam_ke: slot.jam_ke,
+                            jam: `${slot.jam_mulai.getHours().toString().padStart(2, '0')}:${slot.jam_mulai.getMinutes().toString().padStart(2, '0')} - ${slot.jam_selesai.getHours().toString().padStart(2, '0')}:${slot.jam_selesai.getMinutes().toString().padStart(2, '0')}`
+                        })),
+                        data: rombelData
                     };
                 });
 
+
                 return res.status(200).json({
                     groupBy: 'day',
-                    timeSlots: timeSlots.map(slot => slot.id),
                     data: result
                 });
 
@@ -177,7 +222,15 @@ export class RosterController {
                                 data_rombel: {
                                     include: {
                                         ref_master_kategori: true,
-                                        ref_kelas: true
+                                        ref_kelas: {
+                                            include: {
+                                                ref_tingkat: {
+                                                    include: {
+                                                        ref_jenjang: true
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 },
                                 ref_mapel: {
@@ -197,18 +250,24 @@ export class RosterController {
                 // Structure data: group by rombel, then days on y-axis, time slots on x-axis
                 const result = mappedRombels.map(rombel => {
                     const rombelData = days.map(day => {
-                        const dayData = timeSlots.map(slot => {
-                            const roster = rosters.find(r =>
-                                r.hari === day &&
-                                r.id_jam === slot.id
-                            );
-                            const simplifiedRoster = roster ? {
-                                id_roster: roster.id,
-                                mapel: roster.data_kelas.ref_mapel.nama,
-                                guru: roster.data_kelas.ref_mapel.guru_pegawai.nama_gp
-                            } : null;
-                            return simplifiedRoster || null; // Return null if no data for this slot
-                        });
+                        const dayData = timeSlots
+                            .filter(slot => slot.id_jenjang === rombel.id_jenjang) // ambil slot yg cocok dgn jenjang rombel
+                            .map(slot => {
+                                const roster = rosters.find(r =>
+                                    r.hari === day &&
+                                    r.id_jam === slot.id &&
+                                    r.data_kelas.id_rombel === rombel.id &&
+                                    r.data_kelas.data_rombel.ref_kelas.ref_tingkat.id_jenjang === rombel.id_jenjang
+                                );
+
+                                return roster ? {
+                                    id_jam: roster.id_jam,
+                                    id_roster: roster.id,
+                                    mapel: roster.data_kelas.ref_mapel.nama,
+                                    guru: roster.data_kelas.ref_mapel.guru_pegawai.nama_gp
+                                } : null;
+                            });
+
                         return {
                             day,
                             timeSlots: dayData
@@ -221,13 +280,19 @@ export class RosterController {
                             status: rombel.status,
                             kelas: rombel.kelas
                         },
+                        timeSlots: timeSlots
+                            .filter(slot => slot.id_jenjang === rombel.id_jenjang)
+                            .map(slot => ({
+                                id_jam: slot.id,
+                                jam_ke: slot.jam_ke,
+                                jam: `${slot.jam_mulai.getHours().toString().padStart(2, '0')}:${slot.jam_mulai.getMinutes().toString().padStart(2, '0')} - ${slot.jam_selesai.getHours().toString().padStart(2, '0')}:${slot.jam_selesai.getMinutes().toString().padStart(2, '0')}`
+                            })),
                         data: rombelData
                     };
                 });
 
                 return res.status(200).json({
                     groupBy: 'class',
-                    timeSlots: timeSlots.map(slot => slot.id),
                     data: result
                 });
             }
@@ -303,7 +368,11 @@ export class RosterController {
             const roster = await prisma.data_roster.findUnique({
                 where: { id: parseInt(id) },
                 include: {
-                    ref_jam_pelajaran: true,
+                    ref_jam_pelajaran: {
+                        include: {
+                            ref_jenjang: true
+                        }
+                    },
                     data_kelas: {
                         include: {
                             data_rombel: {
@@ -324,7 +393,10 @@ export class RosterController {
 
             const simplifiedRoster = {
                 id_roster: roster.id,
+                id_jam: roster.id_jam,
+                id_kelas: roster.id_kelas,
                 hari: roster.hari,
+                jenjang: roster.ref_jam_pelajaran.ref_jenjang.jenjang,
                 jam: `${roster.ref_jam_pelajaran.jam_mulai.getHours().toString().padStart(2, '0')}:${roster.ref_jam_pelajaran.jam_mulai.getMinutes().toString().padStart(2, '0')} - ${roster.ref_jam_pelajaran.jam_selesai.getHours().toString().padStart(2, '0')}:${roster.ref_jam_pelajaran.jam_selesai.getMinutes().toString().padStart(2, '0')}`,
                 kelas: `${roster.data_kelas.ref_mapel.nama} - ${roster.data_kelas.ref_mapel.guru_pegawai.nama_gp}`,
             };

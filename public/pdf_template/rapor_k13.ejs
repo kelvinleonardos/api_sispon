@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <title>Raport Santri</title>
+  <style>
+    body {
+      position: relative;
+      margin: 0;
+      font-family: 'Arial', sans-serif;
+      font-size: 12px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      border: 1px solid #000;
+      padding: 6px;
+      text-align: end;
+    }
+    .header {
+      margin-bottom: 20px;
+      line-height: 5px;
+    }
+    .header h1 {
+      line-height: 15px;
+    }
+    .student-info p {
+      margin: 0;
+    }
+    .student-info table td {
+      border: none;
+      vertical-align: top;
+      padding: 0 5px;
+    }
+    .info-value {
+      width: 34%;
+      text-align: start;
+    }
+    .info-label {
+      text-align: START;
+      width: 15%;
+    }
+    .titik-dua {
+      text-align: center;
+      width: 1%;
+    }
+    .bab-sikap {
+      margin-top: 40px;
+      page-break-after: always;
+    }
+    .bab-pengetahuan-keterampilan {
+      margin-top: 40px;
+      page-break-after: always;
+    }
+    .bab-ekstrakurikuler, .bab-ketidakhadiran, .bab-catatan, .bab-tanggapan {
+      margin-top: 40px;
+    }
+    .bab-sikap-spiritual, .bab-sikap-sosial {
+      padding-left: 20px;
+      margin-top: 20px;
+    }
+    .bab-pk-pengetahuan thead td {
+      text-align: center;
+    }
+    .bab-pk-pengetahuan th {
+      text-align: center;
+    }
+    .bab-pk-pengetahuan td {
+      text-align: start;
+    }
+    .bab-pk-keterampilan thead td {
+      text-align: center;
+    }
+    .bab-pk-keterampilan th {
+      text-align: center;
+    }
+    .bab-pk-keterampilan td {
+      text-align: start;
+    }
+    .bab-ekstrakurikuler th {
+      text-align: center;
+    }
+    .bab-ekstrakurikuler td {
+      text-align: start;
+    }
+    .bab-ketidakhadiran td {
+      text-align: start;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="header">
+    <table>
+      <tr>
+        <td style="width: 15%; border: none;">
+          <img style="width: 120px;" src="http://66.42.60.252:8000/images/images.png" alt="Logo Shohwatul Is'ad">
+        </td>
+        <td style="width: 85%; border: none; text-align: center;">
+          <h2>YAYASAN SHOHWATUL IS'AD</h2>
+          <h1>PPMI SHOHWATUL IS'AD</h1>
+          <h3>SMP IT SHOHWATUL IS'AD</h3>
+          <p>NPSN: 45114422 | Alamat: Jl. Porsea Padangsidimpuan, Medan Pantai</p>
+          <p>Website: http://www.shohwatalisad.sch.id | Email: info@shohwatalisad.sch.id</p>
+        </td>
+      </tr>
+    </table>
+  </div>
+  <hr style="border: 1px solid #000; margin: 0;" />
+
+  <h2 style="text-align: center; text-transform:uppercase;">CAPAIAN HASIL BELAJAR<br>SEMESTER <%= data.periode_semester %> TAHUN AJARAN <%= data.tahun_ajaran %></h2>
+
+  <div class="student-info">
+    <table>
+      <tr>
+        <td class="info-label"><p>Nama Sekolah</p></td>
+        <td class="titik-dua">:</td>
+        <td class="info-value"><p>SMP IT Shohwatul Is'ad</p></td>
+        <td class="info-label"><p>Kelas</p></td>
+        <td class="titik-dua">:</td>
+        <td class="info-value"><p><%= data.nama_rombel %></p></td>
+      </tr>
+      <tr>
+        <td class="info-label"><p>Alamat</p></td>
+        <td class="titik-dua">:</td>
+        <td class="info-value"><p>Jl. Poros Padang Lampe No.KM. 3, Marang, Kec. Ma'rang, Kabupaten Pangkajene Dan Kepulauan, Sulawesi Selatan </p></td>
+        <td class="info-label"><p>Semester</p></td>
+        <td class="titik-dua">:</td>
+        <td class="info-value"><p><%= data.periode_semester %></p></td>
+      </tr>
+      <tr>
+        <td class="info-label"><p>Nama</p></td>
+        <td class="titik-dua">:</td>
+        <td class="info-value"><p><%= data.nama_santri %></p></td>
+        <td class="info-label"><p>Tahun Pelajaran</p></td>
+        <td class="titik-dua">:</td>
+        <td class="info-value"><p><%= data.tahun_ajaran %></p></td>
+      </tr>
+      <tr>
+        <td class="info-label"><p>NISN</p></td>
+        <td class="titik-dua">:</td>
+        <td class="info-value"><p><%= data.nisn %></p></td>
+      </tr>
+    </table>
+  </div>
+
+  <hr style="border: 1px solid #000; margin: 0; margin-top: 20px;" />
+
+  <div class="bab-sikap">
+    <h2>A. Sikap</h2>
+    <div class="bab-sikap-spiritual">
+      <h2>1. Sikap Spiritual</h2>
+      <table>
+        <tbody>
+          <tr>
+            <th style="text-align: center; width: 20%;">Predikat</th>
+            <th style="text-align: center; width: 80%;">Deskripsi</th>
+          </tr>
+          <tr>
+            <th style="text-align: center;"><%= data.ki1.predikat %></th>
+            <th style="text-wrap-mode: wrap; text-align: left; padding: 20px 8px;"><%= data.ki1.deskripsi %></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="bab-sikap-sosial">
+      <h2>2. Sikap Sosial</h2>
+      <table>
+        <tbody>
+          <tr>
+            <th style="text-align: center; width: 20%;">Predikat</th>
+            <th style="text-align: center; width: 80%;">Deskripsi</th>
+          </tr>
+          <tr>
+            <th style="text-align: center;"><%= data.ki2.predikat %></th>
+            <th style="text-wrap-mode: wrap; text-align: left; padding: 20px 8px;"><%= data.ki2.deskripsi %></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="bab-pengetahuan-keterampilan">
+    <h2>B. Pengetahuan dan Keterampilan</h2>
+    <div class="bab-pk-pengetahuan">
+      <table>
+        <thead>
+          <tr>
+            <td colspan="6">
+              <strong>Pengetahuan</strong>
+            </td>
+          </tr>
+          <tr>
+            <th colspan="2" style="width: 30%;">
+              Mata Pelajaran
+            </th>
+            <th style="width: 5%;">
+              KKM
+            </th>
+            <th style="width: 5%;">
+              Nilai
+            </th>
+            <th style="width: 10%;">
+              Predikat
+            </th>
+            <th style="width: 45px;">
+              Deskripsi
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <% data.ki3.forEach((k, index) => { %>
+            <tr>
+              <td style="width: 3%;">
+                <%= index + 1 %>
+              </td>
+              <td>
+                <%= k.mapel %>
+              </td>
+              <td style="text-align: center;">
+                <%= k.kkm %>
+              </td>
+              <td style="text-align: center;">
+                <%= k.nilai %>
+              </td>
+              <td style="text-align: center;">
+                <%= k.predikat %>
+              </td>
+              <td>
+                <%= k.deskripsi %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <div class="bab-pk-keterampilan">
+      <table>
+        <thead>
+        <tr>
+          <td colspan="6">
+            <strong>Keterampilan</strong>
+          </td>
+        </tr>
+        <tr>
+          <th colspan="2" style="width: 30%;">
+            Mata Pelajaran
+          </th>
+          <th style="width: 5%;">
+            KKM
+          </th>
+          <th style="width: 5%;">
+            Nilai
+          </th>
+          <th style="width: 10%;">
+            Predikat
+          </th>
+          <th style="width: 45px;">
+            Deskripsi
+          </th>
+        </tr>
+        </thead>
+        <tbody>
+        <% data.ki4.forEach((k, index) => { %>
+          <tr>
+            <td style="width: 3%;">
+              <%= index + 1 %>
+            </td>
+            <td>
+              <%= k.mapel %>
+            </td>
+            <td style="text-align: center;">
+              <%= k.kkm %>
+            </td>
+            <td style="text-align: center;">
+              <%= k.nilai %>
+            </td>
+            <td style="text-align: center;">
+              <%= k.predikat %>
+            </td>
+            <td>
+              <%= k.deskripsi %>
+            </td>
+          </tr>
+        <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="bab-ekstrakurikuler">
+    <h2>C. Ekstrakurikuler</h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 5%;">No</th>
+          <th style="width: 30%;">Ekstrakurikuler</th>
+          <th style="width: 65%;">Keterangan</th>
+        </tr>
+      </thead>
+      <tbody>
+      <% data.eskul.forEach((k, index) => { %>
+        <tr>
+          <td style="text-align: center;"><%= index + 1 %></td>
+          <td><%= k.mapel %></td>
+          <td style="text-align: left;"><%= k.catatan %></td>
+        </tr>
+      <% }) %>
+    </table>
+  </div>
+
+  <div class="bab-ketidakhadiran">
+    <h2>D. Ketidakhadiran</h2>
+    <table style="width: 40%;"">
+      <thead>
+        <tr>
+          <th colspan="3" style="text-align: center;">
+            Ketidakhadiran
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="width: 10%;">
+            Sakit
+          </td>
+          <td style="width: 5%; border-right: none;">
+            : 41
+          </td>
+          <td style="width: 5%; border-left: none;">
+            hari
+          </td>
+        </tr>
+        <tr>
+          <td>
+            Izin
+          </td>
+          <td style="width: 5%; border-right: none;">
+            : 41
+          </td>
+          <td style="width: 5%; border-left: none;">
+            hari
+          </td>
+        </tr>
+        <tr>
+          <td>
+            Tanpa Keterangan
+          </td>
+          <td style="width: 5%; border-right: none;">
+            : 41
+          </td>
+          <td style="width: 5%; border-left: none;">
+            hari
+          </td>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="bab-catatan">
+    <h2>E. Catatan Wali Kelas</h2>
+    <table style="width: 100%;">
+      <tbody>
+        <tr>
+          <td style="text-align: left;">
+            <%= data.catatan %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="bab-tanggapan">
+    <h2>F. Tanggapan Orang Tua/Wali</h2>
+        <table style="width: 100%;">
+      <tbody>
+        <tr>
+          <td style="text-align: left;">
+            <br>
+            <br>
+            <br>
+            <br>
+            <br>
+            <br>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</body>
+</html>

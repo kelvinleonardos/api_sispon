@@ -91,12 +91,14 @@ export class JamPelajaranController {
         try {
             const jamPelajaran = await prisma.ref_jam_pelajaran.findMany({
                 include: {
-                    ref_jenjang: true,
+                    ref_jenjang: true
                 },
                 orderBy: {
                     jam_ke: 'asc',
                 },
             });
+
+            console.log(jamPelajaran);
 
             const flatJamPelajaran = jamPelajaran.map((item) => ({
                 id: item.id,
@@ -104,7 +106,7 @@ export class JamPelajaranController {
                 jam_mulai: item.jam_mulai.toISOString().substring(11, 16), // Format HH:mm
                 jam_selesai: item.jam_selesai.toISOString().substring(11, 16), // Format HH:mm
                 id_jenjang: item.id_jenjang,
-                jenjang: item.ref_jenjang.nama,
+                jenjang: item.ref_jenjang.jenjang,
             }));
 
             res.status(200).json(flatJamPelajaran);
@@ -143,7 +145,7 @@ export class JamPelajaranController {
                 jam_mulai: jamPelajaran.jam_mulai.toISOString().substring(11, 16), // Format HH:mm
                 jam_selesai: jamPelajaran.jam_selesai.toISOString().substring(11, 16), // Format HH:mm
                 id_jenjang: jamPelajaran.id_jenjang,
-                jenjang: jamPelajaran.ref_jenjang.nama,
+                jenjang: jamPelajaran.ref_jenjang.jenjang,
             };
 
             res.status(200).json(flatJamPelajaran);
@@ -296,7 +298,7 @@ export class JamPelajaranController {
 
             // 3. Check for related data_roster
             const relatedRoster = await prisma.data_roster.findFirst({
-                where: { id_jam_pelajaran: parsedId },
+                where: { id_jam: parsedId },
             });
 
             if (relatedRoster) {

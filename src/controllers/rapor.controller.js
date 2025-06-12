@@ -1,8 +1,11 @@
 import { prisma } from "../prisma.js";
-import {getTokenPayload} from "../helpers.js";
+import {getTokenPayload, printPdf} from "../helpers.js";
 import path, {dirname, join} from "path";
 import {fileURLToPath} from "url";
 import {promises as fs} from "fs";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export class RaporController {
     static async getJenis(req, res, next) {
@@ -143,11 +146,14 @@ export class RaporController {
                 return res.status(400).json({ message: "Jenis rapor tidak valid" });
             }
 
-            const templatePath = path.join(__dirname, '../views/templates', `${template_avail[id_jenis_rapor]}.ejs`);
+            const data = await RaporHelper.getK13Data(id_santri, req);
 
-            const filename = `rapor_${id_santri}_${template_avail[id_jenis_rapor]}.pdf`;
+            // Define template path and PDF settings
+            const templatePath = path.join(__dirname, `../../public/pdf_template/${template_avail[id_jenis_rapor]}.ejs`);
+            const orientation = "Portrait";
+            const filename = `Rapor Kurikulum 2013 - ${data.nama_santri} - ${data.semester}.pdf`;
 
-            await printPdf(res, data, templatePath, 'Portrait', filename);
+            await printPdf(res, data, templatePath, orientation, filename);
 
         } catch (e) {
             next(e);
@@ -267,7 +273,9 @@ export class RaporController {
                 }
             });
 
-            return res.status(200).json({
+            console.log(result);
+
+            res.status(200).json({
                 status: 'success',
                 message: existingRapor ? 'Data rapor berhasil diperbarui' : 'Data rapor berhasil ditambahkan',
                 data: result
@@ -297,6 +305,431 @@ export class RaporController {
             return res.status(200).json(raporDetail);
         } catch (error) {
             next(error);
+        }
+    }
+
+}
+
+class RaporHelper {
+
+    static async getK13Data(id_santri, req) {
+        try {
+            const { decoded, semester, tahunAjaran } = await getTokenPayload(req);
+
+            const periode_semester = semester.urutan === 1 ? "Ganjil" : "Genap";
+
+            const santri = await prisma.santri.findUnique({
+                where: { id: parseInt(id_santri) },
+            });
+
+            if (!santri) {
+                throw new Error('Santri tidak ditemukan');
+            }
+
+            const rombel = await prisma.data_rombel.findFirst({
+                where: {
+                    id_tahun_ajaran: semester.id_tahun_ajaran,
+                    data_rombel_anggota: {
+                        some: {
+                            id_santri: parseInt(id_santri)
+                        }
+                    }
+                },
+                include: {
+                    ref_kelas: {
+                        include: {
+                            ref_tingkat: true
+                        }
+                    },
+                    guru_pegawai: true,
+                }
+            });
+
+            if (!rombel) {
+                throw new Error('Rombel tidak ditemukan');
+            }
+
+            const nilai = await prisma.data_kelas.findMany({
+                where: {
+                    id_semester: semester.id,
+                    id_rombel: rombel.id
+                },
+                include: {
+                    ref_mapel: {
+                        include: {
+                            data_kkm_detail: {
+                                where: {
+                                    tingkat_id: rombel.ref_kelas.ref_tingkat.id
+                                }
+                            }
+                        }
+                    },
+                    data_rencana_penilaian: {
+                        include: {
+                            ref_komponen_nilai: true,
+                            data_nilai_kelas: true,
+                            data_kompetensi_dasar: {
+                                include: {
+                                    data_kompetensi_inti: true
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            const ki1 = nilai.map((n) => {
+
+                const rencana = n.data_rencana_penilaian
+                    .filter((r) => r.data_kompetensi_dasar.data_kompetensi_inti.kode_ki === '1')
+                    .map((r) => {
+                        const id_rencana = r.id;
+                        const bobot_rencana = r.bobot;
+                        const ki = r.data_kompetensi_dasar.data_kompetensi_inti.kode_ki;
+                        return {
+                            id_rencana,
+                            bobot_rencana,
+                            ki,
+                            kd_nama: r.data_kompetensi_dasar.nama
+                        };
+                    });
+
+                const nilai_santri = n.data_rencana_penilaian
+                    .filter((r) => r.data_kompetensi_dasar.data_kompetensi_inti.kode_ki === '1')
+                    .map((r) => {
+                        const nilai_santri = r.data_nilai_kelas.find((ns) => ns.id_santri === parseInt(id_santri));
+                        if (nilai_santri && nilai_santri.nilai) {
+                            return {
+                                id_rencana: r.id,
+                                nilai: nilai_santri.nilai,
+                                predikat: nilai_santri.predikat || nilai_santri.nilai,
+                                deskripsi: r.data_kompetensi_dasar.deskripsi || ''
+                            };
+                        }
+                        return {
+                            id_rencana: r.id,
+                            nilai: '-',
+                            predikat: '-',
+                            deskripsi: r.data_kompetensi_dasar.deskripsi || ''
+                        };
+                    });
+
+                const nilai_per_komponen = rencana.map((r) => {
+                    const ns = nilai_santri.find((ns) => ns.id_rencana === r.id_rencana);
+                    return {
+                        id_rencana: r.id_rencana,
+                        nilai: ns.nilai,
+                        bobot: r.bobot_rencana,
+                        ki: r.ki,
+                        kd_nama: r.kd_nama
+                    };
+                });
+
+                const predikats = nilai_santri
+                    .filter((ns) => ns.predikat !== '-')
+                    .map((ns) => ns.predikat.toUpperCase());
+                const predikatOrder = { 'A': 4, 'B': 3, 'C': 2, 'D': 1 };
+                const overallPredikat = predikats.length > 0
+                    ? predikats.reduce((lowest, current) => {
+                        return predikatOrder[current] < predikatOrder[lowest] ? current : lowest;
+                    }, 'A')
+                    : '-';
+
+                const predikatLabel = {
+                    'A': 'Sangat Baik',
+                    'B': 'Baik',
+                    'C': 'Cukup',
+                    'D': 'Tidak Baik',
+                    '-': '-'
+                };
+
+                const deskripsi = nilai_santri
+                    .filter((ns) => ns.deskripsi && ns.deskripsi.trim() !== '')
+                    .map((ns) => `${ns.deskripsi}`)
+                    .join('; ') || `Penilaian ${n.ref_mapel.nama}: ${predikatLabel[overallPredikat]}`;
+
+                return {
+                    nilai: overallPredikat,
+                    predikat: predikatLabel[overallPredikat],
+                    deskripsi,
+                    nilai_per_komponen
+                };
+            }).filter((item) => item.nilai_per_komponen.length > 0)[0];
+
+            const ki2 = nilai.map((n) => {
+
+                const rencana = n.data_rencana_penilaian
+                    .filter((r) => r.data_kompetensi_dasar.data_kompetensi_inti.kode_ki === '2')
+                    .map((r) => {
+                        const id_rencana = r.id;
+                        const bobot_rencana = r.bobot;
+                        const ki = r.data_kompetensi_dasar.data_kompetensi_inti.kode_ki;
+                        return {
+                            id_rencana,
+                            bobot_rencana,
+                            ki,
+                            kd_nama: r.data_kompetensi_dasar.nama
+                        };
+                    });
+
+                const nilai_santri = n.data_rencana_penilaian
+                    .filter((r) => r.data_kompetensi_dasar.data_kompetensi_inti.kode_ki === '2')
+                    .map((r) => {
+                        const nilai_santri = r.data_nilai_kelas.find((ns) => ns.id_santri === parseInt(id_santri));
+                        if (nilai_santri && nilai_santri.nilai) {
+                            return {
+                                id_rencana: r.id,
+                                nilai: nilai_santri.nilai,
+                                predikat: nilai_santri.predikat || nilai_santri.nilai,
+                                deskripsi: r.data_kompetensi_dasar.deskripsi || ''
+                            };
+                        }
+                        return {
+                            id_rencana: r.id,
+                            nilai: '-',
+                            predikat: '-',
+                            deskripsi: r.data_kompetensi_dasar.deskripsi || ''
+                        };
+                    });
+
+                const nilai_per_komponen = rencana.map((r) => {
+                    const ns = nilai_santri.find((ns) => ns.id_rencana === r.id_rencana);
+                    return {
+                        id_rencana: r.id_rencana,
+                        nilai: ns.nilai,
+                        bobot: r.bobot_rencana,
+                        ki: r.ki,
+                        kd_nama: r.kd_nama
+                    };
+                });
+
+                const predikats = nilai_santri
+                    .filter((ns) => ns.predikat !== '-')
+                    .map((ns) => ns.predikat.toUpperCase());
+                const predikatOrder = { 'A': 4, 'B': 3, 'C': 2, 'D': 1 };
+                const overallPredikat = predikats.length > 0
+                    ? predikats.reduce((lowest, current) => {
+                        return predikatOrder[current] < predikatOrder[lowest] ? current : lowest;
+                    }, 'A')
+                    : '-';
+
+                const predikatLabel = {
+                    'A': 'Sangat Baik',
+                    'B': 'Baik',
+                    'C': 'Cukup',
+                    'D': 'Tidak Baik',
+                    '-': '-'
+                };
+
+                const deskripsi = nilai_santri
+                    .filter((ns) => ns.deskripsi && ns.deskripsi.trim() !== '')
+                    .map((ns) => `${ns.deskripsi}`)
+                    .join('; ') || `Penilaian ${n.ref_mapel.nama}: ${predikatLabel[overallPredikat]}`;
+
+                return {
+                    nilai: overallPredikat,
+                    predikat: predikatLabel[overallPredikat],
+                    deskripsi,
+                    nilai_per_komponen
+                };
+            }).filter((item) => item.nilai_per_komponen.length > 0)[0];
+
+            const ki3 = nilai.map((n) => {
+                let total_nilai = 0;
+                const kkm = n.ref_mapel.data_kkm_detail[0]?.kkm || 0;
+
+                const rencana = n.data_rencana_penilaian
+                    .filter((r) => r.data_kompetensi_dasar.data_kompetensi_inti.kode_ki === '3')
+                    .map((r) => {
+                        const id_rencana = r.id;
+                        const bobot_rencana = r.bobot;
+                        const ki = r.data_kompetensi_dasar.data_kompetensi_inti.kode_ki;
+                        return {
+                            id_rencana,
+                            bobot_rencana,
+                            ki,
+                            kd_nama: r.data_kompetensi_dasar.nama
+                        };
+                    });
+
+                const nilai_santri = n.data_rencana_penilaian
+                    .filter((r) => r.data_kompetensi_dasar.data_kompetensi_inti.kode_ki === '3')
+                    .map((r) => {
+                        const nilai_santri = r.data_nilai_kelas.find((ns) => ns.id_santri === parseInt(id_santri));
+                        if (nilai_santri) {
+                            return {
+                                id_rencana: r.id,
+                                nilai: parseInt(nilai_santri.nilai) || 0,
+                                predikat: nilai_santri.predikat || '',
+                                deskripsi: r.data_kompetensi_dasar.deskripsi || ''
+                            };
+                        }
+                        return {
+                            id_rencana: r.id,
+                            nilai: 0,
+                            predikat: '',
+                            deskripsi: r.data_kompetensi_dasar.deskripsi || ''
+                        };
+                    });
+
+                const nilai_per_komponen = rencana.map((r) => {
+                    const ns = nilai_santri.find((ns) => ns.id_rencana === r.id_rencana);
+                    const nilai_komponen = ns.nilai * (r.bobot_rencana / 100);
+                    total_nilai += nilai_komponen;
+                    return {
+                        id_rencana: r.id_rencana,
+                        nilai_komponen,
+                        bobot: r.bobot_rencana,
+                        ki: r.ki,
+                        kd_nama: r.kd_nama
+                    };
+                });
+
+                let predikat = '';
+                if (total_nilai >= kkm) {
+                    if (total_nilai >= 90) predikat = 'A';
+                    else if (total_nilai >= 80) predikat = 'B';
+                    else predikat = 'C';
+                } else {
+                    predikat = 'D';
+                }
+
+                const deskripsi = nilai_santri
+                    .filter((ns) => ns.deskripsi && ns.deskripsi.trim() !== '')
+                    .map((ns) => `${ns.deskripsi}`)
+                    .join('; ') || `Nilai ${n.ref_mapel.nama}: ${total_nilai.toFixed(2)} (${predikat})`;
+
+                return {
+                    mapel: n.ref_mapel.nama,
+                    nilai: total_nilai.toFixed(2),
+                    predikat: predikat,
+                    deskripsi,
+                    kkm,
+                    nilai_per_komponen
+                };
+            }).filter((item) => item.nilai_per_komponen.length > 0);
+
+            const ki4 = nilai.map((n) => {
+                let total_nilai = 0;
+                const kkm = n.ref_mapel.data_kkm_detail[0]?.kkm || 0;
+
+                const rencana = n.data_rencana_penilaian
+                    .filter((r) => r.data_kompetensi_dasar.data_kompetensi_inti.kode_ki === '4')
+                    .map((r) => {
+                        const id_rencana = r.id;
+                        const bobot_rencana = r.bobot;
+                        const ki = r.data_kompetensi_dasar.data_kompetensi_inti.kode_ki;
+                        return {
+                            id_rencana,
+                            bobot_rencana,
+                            ki,
+                            kd_nama: r.data_kompetensi_dasar.nama
+                        };
+                    });
+
+                const nilai_santri = n.data_rencana_penilaian
+                    .filter((r) => r.data_kompetensi_dasar.data_kompetensi_inti.kode_ki === '4')
+                    .map((r) => {
+                        const nilai_santri = r.data_nilai_kelas.find((ns) => ns.id_santri === parseInt(id_santri));
+                        if (nilai_santri) {
+                            return {
+                                id_rencana: r.id,
+                                nilai: parseInt(nilai_santri.nilai) || 0,
+                                predikat: nilai_santri.predikat || '',
+                                deskripsi: r.data_kompetensi_dasar.deskripsi || ''
+                            };
+                        }
+                        return {
+                            id_rencana: r.id,
+                            nilai: 0,
+                            predikat: '',
+                            deskripsi: r.data_kompetensi_dasar.deskripsi || ''
+                        };
+                    });
+
+                const nilai_per_komponen = rencana.map((r) => {
+                    const ns = nilai_santri.find((ns) => ns.id_rencana === r.id_rencana);
+                    const nilai_komponen = ns.nilai * (r.bobot_rencana / 100);
+                    total_nilai += nilai_komponen;
+                    return {
+                        id_rencana: r.id_rencana,
+                        nilai_komponen,
+                        bobot: r.bobot_rencana,
+                        ki: r.ki,
+                        kd_nama: r.kd_nama
+                    };
+                });
+
+                let predikat = '';
+                if (total_nilai >= kkm) {
+                    if (total_nilai >= 90) predikat = 'A';
+                    else if (total_nilai >= 80) predikat = 'B';
+                    else predikat = 'C';
+                } else {
+                    predikat = 'D';
+                }
+
+                const deskripsi = nilai_santri
+                    .filter((ns) => ns.deskripsi && ns.deskripsi.trim() !== '')
+                    .map((ns) => `${ns.deskripsi}`)
+                    .join('; ') || `Nilai ${n.ref_mapel.nama}: ${total_nilai.toFixed(2)} (${predikat})`;
+
+                return {
+                    mapel: n.ref_mapel.nama,
+                    nilai: total_nilai.toFixed(2),
+                    predikat: predikat,
+                    deskripsi,
+                    kkm,
+                    nilai_per_komponen
+                };
+            }).filter((item) => item.nilai_per_komponen.length > 0);
+
+            const eskul = await prisma.data_nilai_eskul.findMany({
+                where: {
+                    id_santri: parseInt(id_santri),
+                    id_semester: semester.id,
+                },
+                include: {
+                    ref_mapel: true,
+                }
+            });
+
+            const simplifiedEskul = eskul.map((e) => {
+                return {
+                    id: e.id,
+                    mapel: e.ref_mapel.nama,
+                    nilai: e.nilai,
+                    catatan: e.catatan || '',
+                };
+            });
+
+            const catatan = await prisma.data_rombel_anggota.findFirst({
+                where: {
+                    id_santri: parseInt(id_santri),
+                    data_rombel: {
+                        id_tahun_ajaran: semester.id_tahun_ajaran,
+                    }
+                }
+            });
+
+            return {
+                semester: semester.nama,
+                periode_semester,
+                tahun_ajaran: tahunAjaran.nama,
+                nama_rombel: rombel.ref_kelas.kelas,
+                nama_santri: santri.nama,
+                nisn: santri.nisn,
+                wali_kelas: rombel.guru_pegawai.nama_gp,
+                ki1,
+                ki2,
+                ki3,
+                ki4,
+                eskul: simplifiedEskul,
+                catatan: catatan.catatan_wk_as || '',
+            };
+        } catch (error) {
+            console.log(error);
+            throw new Error('Failed to fetch K13 data');
         }
     }
 

@@ -13,5 +13,6 @@ router.put('/update-detail/:id_mapel', authenticate, MapelController.updateDetai
 
 router.get('/', authenticate, MapelController.getAllMapel);
 router.post('/', authenticate, MapelController.createMapel);
+router.delete('/:id', authenticate, MapelController.deleteMapel);
 
 export default router;

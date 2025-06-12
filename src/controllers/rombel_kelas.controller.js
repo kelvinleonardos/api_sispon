@@ -247,6 +247,40 @@ export class RombelKelasController {
                 return res.status(404).json({ message: 'Rombel tidak ditemukan' });
             }
 
+            const all_rencana = await prisma.data_rombel.findUnique({
+                where: { id: parseInt(id) },
+                include: {
+                    data_kelas: {
+                        where: {
+                            AND: [
+                                tipe ? { ref_mapel: { id_master_kategori_ref_mapel: parseInt(tipe) } } : {},
+                                { id_semester: parseInt(semester.id) },
+                                mapelFilter ? { id_mapel: mapelFilter } : {},
+                            ],
+                        },
+                        include: {
+                            data_rencana_penilaian: {
+                                include: {
+                                    ref_komponen_nilai: true,
+                                    data_kompetensi_dasar: {
+                                        include: {
+                                            data_kompetensi_inti: {
+                                                include: {
+                                                    ref_tingkat: true
+                                                }
+                                            }
+                                        }
+                                    },
+                                },
+                                orderBy: {
+                                    urutan: "asc",
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+
             // Hitung jumlah siswa
             const jumlahSiswa = rombel.data_rombel_anggota.length;
 
@@ -286,7 +320,8 @@ export class RombelKelasController {
                         nama_guru: guruNama,
                         mata_pelajaran: `${mapelNama} (KKM ${kkm})`,
                         is_locked: kelas.is_locked || false,
-                        rencana_penilaian: [],
+                        rencana_penilaian: all_rencana.data_kelas,
+                        rencana_penilaian_nilai: [],
                         data_nilai: [],
                     };
                     acc.push(mapelEntry);
@@ -298,14 +333,16 @@ export class RombelKelasController {
                 };
 
                 kelas.data_rencana_penilaian.forEach(penilaian => {
-                    console.log(penilaian);
                     const ki = penilaian.data_kompetensi_dasar?.data_kompetensi_inti;
-                    mapelEntry.rencana_penilaian.push({
+                    mapelEntry.rencana_penilaian_nilai.push({
                         id: penilaian.id,
                         nama: penilaian.nama,
                         waktu: `${mapBulan[penilaian.bulan]}, Pekan ${penilaian.pekan}, Hari ${penilaian.hari}`,
                         kode_ki: ki?.kode_ki || '-',
                         deskripsi_ki: ki?.deskripsi || '-',
+                        bulan: ki?.bulan,
+                        pekan: ki?.pekan,
+                        hari: ki?.hari,
                         kode_kd: penilaian.data_kompetensi_dasar?.kode_kd || '-',
                         deskripsi_kd: penilaian.data_kompetensi_dasar?.deskripsi || '-',
                         id_komponen: penilaian.id_komponen,
@@ -336,6 +373,7 @@ export class RombelKelasController {
                 });
 
                 mapelEntry.data_nilai = Array.from(siswaNilaiMap.values()).map(siswa => ({
+                    nis:siswa.nis,
                     nama: siswa.nama,
                     nilai: Array.from(siswa.nilai.values())
                 }));
@@ -353,7 +391,529 @@ export class RombelKelasController {
                 mapel_details: mapelDetails,
             };
 
+            console.log(formattedRombel);
+
             res.status(200).json(formattedRombel);
+        } catch (e) {
+            next(e);
+        }
+    }
+
+    static async getRombelDetailInfo(req, res, next) {
+        try {
+            const { id } = req.params;
+
+            const rombel = await prisma.data_rombel.findUnique({
+                where: { id: parseInt(id) },
+                include: {
+                    ref_kelas: {
+                        include: {
+                            ref_tingkat: {
+                                include: {
+                                    ref_kurikulum: true,
+                                },
+                            },
+                        },
+                    },
+                    guru_pegawai: true,
+                    data_rombel_anggota: {
+                        include: {
+                            santri: true,
+                        },
+                    },
+                    data_kelas: {
+                        include: {
+                            ref_mapel: {
+                                include: {
+                                    guru_pegawai: true,
+                                    data_kkm_detail: true,
+                                    data_kompetensi_inti: {
+                                        include: {
+                                            data_kompetensi_dasar: true,
+                                            ref_tingkat: true
+                                        }
+                                    }
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+            if (!rombel) {
+                return res.status(404).json({ message: 'Rombel tidak ditemukan' });
+            }
+
+            // Hitung jumlah siswa
+            const jumlahSiswa = rombel.data_rombel_anggota.length;
+
+            // Hitung jumlah mapel unik berdasarkan id_mapel
+            const uniqueMapel = [...new Set(rombel.data_kelas.map(kelas => kelas.id_mapel))];
+            const jumlahMapel = uniqueMapel.length;
+
+            // Hitung jumlah guru unik berdasarkan id_pengajar di ref_mapel
+            const uniqueGuru = [...new Set(rombel.data_kelas
+                .map(kelas => kelas.ref_mapel.id_pengajar)
+                .filter(id => id !== null))];
+            const jumlahGuru = uniqueGuru.length;
+
+            const formattedRombel = {
+                kelas: rombel.ref_kelas?.kelas || '-',
+                wali_kelas: rombel.guru_pegawai?.nama_gp || '-',
+                kurikulum: rombel.ref_kelas?.ref_tingkat?.ref_kurikulum?.nama || '-',
+                jumlah_siswa: jumlahSiswa,
+                jumlah_guru: jumlahGuru,
+                jumlah_mapel: jumlahMapel
+            };
+
+            res.status(200).json(formattedRombel);
+
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    static async getRombelDetailKelas(req, res, next) {
+        try {
+            const { decoded, semester, tahunAjaran } = await getTokenPayload(req);
+            const { id } = req.params;
+            const { tipe, komponen, } = req.query;
+
+            // Validate tipe (category ID)
+            let kategori = null;
+            if (tipe) {
+                if (isNaN(parseInt(tipe))) {
+                    return res.status(400).json({ message: 'ID tipe kategori tidak valid' });
+                }
+                kategori = await prisma.ref_master_kategori.findFirst({
+                    where: {
+                        id: parseInt(tipe),
+                        tipe: 'mapel',
+                    },
+                });
+                if (!kategori) {
+                    return res.status(404).json({ message: 'Kategori dengan ID tersebut tidak ditemukan' });
+                }
+            }
+
+            // Validate komponen (component ID)
+            let komponenId = null;
+            if (komponen) {
+                if (isNaN(parseInt(komponen))) {
+                    return res.status(400).json({ message: 'ID komponen tidak valid' });
+                }
+                const komponenData = await prisma.ref_komponen_nilai.findUnique({
+                    where: {
+                        id: parseInt(komponen),
+                    },
+                });
+                if (!komponenData) {
+                    return res.status(404).json({ message: 'Komponen dengan ID tersebut tidak ditemukan' });
+                }
+                komponenId = parseInt(komponen);
+            }
+
+            const rombel = await prisma.data_rombel.findUnique({
+                where: { id: parseInt(id) },
+                include: {
+                    ref_kelas: {
+                        include: {
+                            ref_tingkat: {
+                                include: {
+                                    ref_kurikulum: true,
+                                },
+                            },
+                        },
+                    },
+                    guru_pegawai: true,
+                    data_rombel_anggota: {
+                        include: {
+                            santri: true,
+                        },
+                    },
+                    data_kelas: {
+                        where: {
+                            AND: [
+                                tipe ? { ref_mapel: { id_master_kategori_ref_mapel: parseInt(tipe) } } : {},
+                                { id_semester: parseInt(semester.id) },
+                            ],
+                        },
+                        include: {
+                            ref_mapel: {
+                                include: {
+                                    guru_pegawai: true,
+                                    data_kkm_detail: true,
+                                    data_kompetensi_inti: {
+                                        include: {
+                                            data_kompetensi_dasar: true,
+                                            ref_tingkat: true
+                                        }
+                                    }
+                                },
+                            },
+                            data_rencana_penilaian: {
+                                where: {
+                                    id_komponen: komponenId ? komponenId : undefined,
+                                },
+                                include: {
+                                    ref_komponen_nilai: true,
+                                    data_kompetensi_dasar: {
+                                        include: {
+                                            data_kompetensi_inti: {
+                                                include: {
+                                                    ref_tingkat: true
+                                                }
+                                            }
+                                        }
+                                    },
+                                    data_nilai_kelas: {
+                                        include: {
+                                            santri: true,
+                                        },
+                                    },
+                                },
+                                orderBy: {
+                                    urutan: "asc",
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+            if (!rombel) {
+                return res.status(404).json({ message: 'Rombel tidak ditemukan' });
+            }
+
+            // Format data guru mapel, rencana penilaian, dan nilai siswa
+            const mapelDetails = rombel.data_kelas.reduce((acc, kelas) => {
+                const mapelId = kelas.ref_mapel.id;
+                const jenisNilai = kelas.ref_mapel.jenis_nilai;
+                const kelasId = kelas.id;
+                const mapelNama = kelas.ref_mapel.nama;
+                const guruNama = kelas.ref_mapel.guru_pegawai?.nama_gp || '-';
+                const tingkatId = rombel.ref_kelas?.ref_tingkat?.id;
+
+                let kkm = 'N/A';
+                if (kelas.ref_mapel.data_kkm_detail && kelas.ref_mapel.data_kkm_detail.length > 0) {
+                    const kkmDetail = kelas.ref_mapel.data_kkm_detail.find(
+                        detail => detail.tingkat_id === tingkatId && detail.mapel_id === mapelId
+                    );
+                    kkm = kkmDetail?.kkm || 'N/A';
+                }
+
+                let mapelEntry = acc.find(entry => entry.id_mapel === mapelId);
+                if (!mapelEntry) {
+                    mapelEntry = {
+                        id_kelas: kelasId,
+                        id_mapel: mapelId,
+                        jenis_nilai: jenisNilai,
+                        nama_guru: guruNama,
+                        mata_pelajaran: `${mapelNama} (KKM ${kkm})`,
+                        is_locked: kelas.is_locked || false,
+                        rencana_penilaian: [],
+                    };
+                    acc.push(mapelEntry);
+                }
+
+                const mapBulan = {
+                    1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April', 5: 'Mei', 6: 'Juni',
+                    7: 'Juli', 8: 'Agustus', 9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'
+                };
+
+                kelas.data_rencana_penilaian.forEach(penilaian => {
+                    const ki = penilaian.data_kompetensi_dasar?.data_kompetensi_inti;
+                    mapelEntry.rencana_penilaian.push({
+                        id: penilaian.id,
+                        nama: penilaian.nama,
+                        waktu: `${mapBulan[penilaian.bulan]}, Pekan ${penilaian.pekan}, Hari ${penilaian.hari}`,
+                        kode_ki: ki?.kode_ki || '-',
+                        deskripsi_ki: ki?.deskripsi || '-',
+                        kode_kd: penilaian.data_kompetensi_dasar?.kode_kd || '-',
+                        deskripsi_kd: penilaian.data_kompetensi_dasar?.deskripsi || '-',
+                        id_komponen: penilaian.id_komponen,
+                        bobot: `${penilaian.bobot}%`,
+                    });
+                });
+
+                return acc;
+            }, []);
+
+            res.status(200).json(mapelDetails);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    static async getRombelDetailSiswa(req, res, next) {
+        try {
+            const { decoded, semester, tahunAjaran } = await getTokenPayload(req);
+            const { id_rombel, id_mapel } = req.params;
+            const { bulan, pekan } = req.query;
+
+            // Validate bulan (month)
+            let bulanFilter = null;
+            if (bulan) {
+                if (isNaN(parseInt(bulan)) || parseInt(bulan) < 1 || parseInt(bulan) > 12) {
+                    return res.status(400).json({ message: 'Bulan harus berupa angka antara 1 dan 12' });
+                }
+                bulanFilter = parseInt(bulan);
+            }
+
+            // Validate pekan (week)
+            let pekanFilter = null;
+            if (pekan) {
+                if (isNaN(parseInt(pekan)) || parseInt(pekan) < 1) {
+                    return res.status(400).json({ message: 'Pekan harus berupa angka positif' });
+                }
+                pekanFilter = parseInt(pekan);
+            }
+
+            const rombel = await prisma.data_rombel.findUnique({
+                where: { id: parseInt(id_rombel) },
+                include: {
+                    ref_kelas: {
+                        include: {
+                            ref_tingkat: true
+                        },
+                    },
+                    data_rombel_anggota: {
+                        include: {
+                            santri: true,
+                        },
+                    },
+                    data_kelas: {
+                        where: {
+                            AND: [
+                                { id_semester: parseInt(semester.id) },
+                                { id_mapel: parseInt(id_mapel) },
+                            ],
+                        },
+                        include: {
+                            ref_mapel: {
+                                include: {
+                                    guru_pegawai: true,
+                                    data_kkm_detail: true,
+                                    data_kompetensi_inti: {
+                                        include: {
+                                            data_kompetensi_dasar: true,
+                                            ref_tingkat: true
+                                        }
+                                    }
+                                },
+                            },
+                            data_rencana_penilaian: {
+                                where: {
+                                    AND: [
+                                        bulanFilter ? { bulan: bulanFilter } : {},
+                                        pekanFilter ? { pekan: pekanFilter } : {},
+                                    ],
+                                },
+                                include: {
+                                    ref_komponen_nilai: true,
+                                    data_kompetensi_dasar: {
+                                        include: {
+                                            data_kompetensi_inti: {
+                                                include: {
+                                                    ref_tingkat: true
+                                                }
+                                            }
+                                        }
+                                    },
+                                    data_nilai_kelas: {
+                                        include: {
+                                            santri: true,
+                                        },
+                                    },
+                                },
+                                orderBy: {
+                                    urutan: "asc",
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+            if (!rombel) {
+                return res.status(404).json({ message: 'Rombel tidak ditemukan' });
+            }
+
+            // Format data guru mapel, rencana penilaian, dan nilai siswa
+            const mapelDetails = rombel.data_kelas.reduce((acc, kelas) => {
+                const mapelId = kelas.ref_mapel.id;
+                const jenisNilai = kelas.ref_mapel.jenis_nilai;
+                const kelasId = kelas.id;
+                const mapelNama = kelas.ref_mapel.nama;
+                const guruNama = kelas.ref_mapel.guru_pegawai?.nama_gp || '-';
+                const tingkatId = rombel.ref_kelas?.ref_tingkat?.id;
+
+                let kkm = 'N/A';
+                if (kelas.ref_mapel.data_kkm_detail && kelas.ref_mapel.data_kkm_detail.length > 0) {
+                    const kkmDetail = kelas.ref_mapel.data_kkm_detail.find(
+                        detail => detail.tingkat_id === tingkatId && detail.mapel_id === mapelId
+                    );
+                    kkm = kkmDetail?.kkm || 'N/A';
+                }
+
+                let mapelEntry = acc.find(entry => entry.id_mapel === mapelId);
+                if (!mapelEntry) {
+                    mapelEntry = {
+                        id_kelas: kelasId,
+                        id_mapel: mapelId,
+                        jenis_nilai: jenisNilai,
+                        nama_guru: guruNama,
+                        kkm: kkm,
+                        mata_pelajaran: mapelNama,
+                        is_locked: kelas.is_locked || false,
+                        rencana_penilaian_nilai: [],
+                        data_nilai: [],
+                    };
+                    acc.push(mapelEntry);
+                }
+
+                const mapBulan = {
+                    1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April', 5: 'Mei', 6: 'Juni',
+                    7: 'Juli', 8: 'Agustus', 9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'
+                };
+
+                kelas.data_rencana_penilaian.forEach(penilaian => {
+                    const ki = penilaian.data_kompetensi_dasar?.data_kompetensi_inti;
+                    mapelEntry.rencana_penilaian_nilai.push({
+                        id: penilaian.id,
+                        nama: penilaian.nama,
+                        waktu: `${mapBulan[penilaian.bulan]}, Pekan ${penilaian.pekan}, Hari ${penilaian.hari}`,
+                        kode_ki: ki?.kode_ki || '-',
+                        deskripsi_ki: ki?.deskripsi || '-',
+                        bulan: ki?.bulan,
+                        pekan: ki?.pekan,
+                        hari: ki?.hari,
+                        kode_kd: penilaian.data_kompetensi_dasar?.kode_kd || '-',
+                        deskripsi_kd: penilaian.data_kompetensi_dasar?.deskripsi || '-',
+                        id_komponen: penilaian.id_komponen,
+                        bobot: `${penilaian.bobot}%`,
+                    });
+                });
+
+                const siswaNilaiMap = new Map();
+                rombel.data_rombel_anggota.forEach(anggota => {
+                    const siswaId = anggota.santri.id;
+                    const siswaNama = anggota.santri.nama || '-';
+                    const siswaNis = anggota.santri.nis || '-';
+                    siswaNilaiMap.set(siswaId, {
+                        nis: siswaNis,
+                        id_santri: siswaId,
+                        nama: siswaNama,
+                        nilai: new Map()
+                    });
+                });
+
+                kelas.data_rencana_penilaian.forEach(penilaian => {
+                    siswaNilaiMap.forEach(siswa => {
+                        const nilaiSiswa = penilaian.data_nilai_kelas.find(nilai => nilai.id_santri === siswa.id_santri);
+                        siswa.nilai.set(penilaian.id, {
+                            id_rencana_penilaian: penilaian.id,
+                            nama_rencana: penilaian.nama,
+                            nilai: nilaiSiswa ? nilaiSiswa.nilai || null : null
+                        });
+                    });
+                });
+
+                mapelEntry.data_nilai = Array.from(siswaNilaiMap.values()).map(siswa => ({
+                    nis: siswa.nis,
+                    id_santri: siswa.id_santri,
+                    nama: siswa.nama,
+                    nilai: Array.from(siswa.nilai.values())
+                }));
+
+                return acc;
+            }, []);
+
+            res.status(200).json(mapelDetails[0]);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    static async getKelasDetailByRencana(req, res, next) {
+        try {
+            const { decoded, semester, tahunAjaran } = await getTokenPayload(req);
+            const { id, id_rencana } = req.params;
+
+            const kelas = await prisma.data_kelas.findUnique({
+                where: { id: parseInt(id) },
+                include: {
+                    data_rencana_penilaian: {
+                        where: {
+                            id: parseInt(id_rencana),
+                        },
+                        include: {
+                            ref_komponen_nilai: true,
+                            data_kompetensi_dasar: {
+                                include: {
+                                    data_kompetensi_inti: {
+                                        include: {
+                                            ref_tingkat: true,
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                        orderBy: {
+                            urutan: "asc",
+                        },
+                    },
+                },
+            });
+
+            if (!kelas) {
+                return res.status(404).json({ message: 'Kelas tidak ditemukan' });
+            }
+
+            const mapBulan = {
+                1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April', 5: 'Mei', 6: 'Juni',
+                7: 'Juli', 8: 'Agustus', 9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember',
+            };
+
+            const rencanaPenilaian = kelas.data_rencana_penilaian.map(penilaian => {
+                const ki = penilaian.data_kompetensi_dasar?.data_kompetensi_inti;
+                return {
+                    id: penilaian.id,
+                    nama: penilaian.nama,
+                    id_komponen: penilaian.id_komponen,
+                    nama_komponen: penilaian.ref_komponen_nilai?.nama || '-',
+                    bulan: penilaian.bulan,
+                    pekan: penilaian.pekan,
+                    hari: penilaian.hari,
+                    id_kd: penilaian.data_kompetensi_dasar?.id || null,
+                    kode_kd: penilaian.data_kompetensi_dasar?.kode_kd || '-',
+                    deskripsi_kd: penilaian.data_kompetensi_dasar?.deskripsi || '-',
+                    bobot: penilaian.bobot,
+                };
+            });
+
+            res.status(200).json(rencanaPenilaian[0]);
+        } catch (e) {
+            next(e);
+        }
+    }
+
+    static async deleteRencanaPenilaian(req, res, next) {
+        try {
+            const { id_rencana } = req.params;
+
+            // Validasi apakah rencana penilaian ada
+            const rencanaPenilaian = await prisma.data_rencana_penilaian.findUnique({
+                where: { id: parseInt(id_rencana) },
+            });
+
+            if (!rencanaPenilaian) {
+                return res.status(404).json({ message: 'Rencana penilaian tidak ditemukan' });
+            }
+
+            // Hapus rencana penilaian
+            await prisma.data_rencana_penilaian.delete({
+                where: { id: parseInt(id_rencana) },
+            });
+
+            res.status(200).json({ message: 'Rencana penilaian berhasil dihapus' });
         } catch (e) {
             next(e);
         }
@@ -400,6 +960,15 @@ export class RombelKelasController {
             const kelas = await prisma.data_kelas.findUnique({
                 where: { id: parseInt(id) },
                 include: {
+                    data_rombel: {
+                        include: {
+                            ref_kelas: {
+                                include: {
+                                    ref_tingkat: true
+                                },
+                            },
+                        }
+                    },
                     ref_mapel: {
                         include: {
                             guru_pegawai: true,
@@ -466,6 +1035,8 @@ export class RombelKelasController {
             });
 
             const formattedKelas = {
+                id_tingkat: kelas.data_rombel.ref_kelas.ref_tingkat.id,
+                id_mapel: kelas.ref_mapel.id,
                 nama_guru: kelas.ref_mapel.guru_pegawai?.nama_gp || '-',
                 mata_pelajaran: kelas.ref_mapel.nama,
                 kkm: kkm,
@@ -481,11 +1052,18 @@ export class RombelKelasController {
     static async getAllRombelKelas(req, res, next) {
         try {
             const { decoded, semester, tahunAjaran, user } = await getTokenPayload(req);
-            const { tipe } = req.query;
+            const { tipe, class: className } = req.query;
 
+            // Validasi kode_pegawai
             if (!user.kode_pegawai || isNaN(parseInt(user.kode_pegawai))) {
                 throw new Error('Kode pegawai tidak valid');
             }
+
+            const refKelas = await prisma.ref_kelas.findFirst({
+                where: {
+                    kelas: className,
+                },
+            });
 
             // Validasi tipe jika diberikan
             let kategori = null;
@@ -504,31 +1082,53 @@ export class RombelKelasController {
                 }
             }
 
+            // Cari data guru
             const guru = await prisma.guru_pegawai.findFirst({
                 where: {
                     id: parseInt(user.kode_pegawai),
                 },
             });
+            if (!guru) {
+                throw new Error('Data guru tidak ditemukan');
+            }
 
+            // Buat where clause untuk data_rombel
             const rombelWhereClause = {
                 id_tahun_ajaran: semester.id_tahun_ajaran,
             };
 
+            // Tambahkan filter classid ke rombelWhereClause jika ada
+            if (className) {
+                rombelWhereClause.id_kelas = parseInt(refKelas.id);
+
+                // Validasi apakah rombel ada
+                const rombelExists = await prisma.data_rombel.findFirst({
+                    where: { id_kelas: parseInt(refKelas.id) },
+                });
+                if (!rombelExists) {
+                    throw new Error('Rombel dengan ID tersebut tidak ditemukan');
+                }
+            }
+
+            // Buat where clause untuk data_kelas
             const dataKelasWhereClause = {
                 id_semester: semester.id,
                 ref_mapel: {},
             };
 
+            // Filter berdasarkan role pengguna
             if (user.role_id === 19) {
                 rombelWhereClause.id_wali_kelas = guru.id;
             } else if (user.role_id === 21) {
                 dataKelasWhereClause.ref_mapel.id_pengajar = guru.id;
             }
 
+            // Filter berdasarkan kategori mapel jika ada
             if (kategori) {
                 dataKelasWhereClause.ref_mapel.id_master_kategori_ref_mapel = parseInt(tipe);
             }
 
+            // Query data rombel
             const rombel = await prisma.data_rombel.findMany({
                 where: rombelWhereClause,
                 include: {
@@ -548,9 +1148,9 @@ export class RombelKelasController {
                                     data_kompetensi_inti: {
                                         include: {
                                             data_kompetensi_dasar: true,
-                                            ref_tingkat: true
-                                        }
-                                    }
+                                            ref_tingkat: true,
+                                        },
+                                    },
                                 },
                             },
                             data_rencana_penilaian: {
@@ -558,12 +1158,12 @@ export class RombelKelasController {
                                     ref_komponen_nilai: true,
                                     data_kompetensi_dasar: {
                                         include: {
-                                            data_kompetensi_inti: true
-                                        }
-                                    }
+                                            data_kompetensi_inti: true,
+                                        },
+                                    },
                                 },
                                 orderBy: {
-                                    urutan: "asc",
+                                    urutan: 'asc',
                                 },
                             },
                         },
@@ -571,6 +1171,7 @@ export class RombelKelasController {
                 },
             });
 
+            // Mapping hasil query
             const mappedRombel = rombel.map((rombels) => {
                 const { nama, ref_kelas, guru_pegawai, data_kelas, ...rest } = rombels;
                 const wali_kelas = guru_pegawai ? guru_pegawai.nama_gp : '-';
@@ -590,15 +1191,15 @@ export class RombelKelasController {
                 }));
 
                 const status = {
-                    is_locked: data_kelas.length > 0 && data_kelas.every(kelas => kelas.is_locked === true),
+                    is_locked: data_kelas.length > 0 && data_kelas.every((kelas) => kelas.is_locked === true),
                     tujuan_pembelajaran: list_mapel.length > 0 && list_mapel.every((mapel) =>
                         mapel.id_kelas &&
-                        data_kelas.find(k => k.id === mapel.id_kelas)?.ref_mapel.data_kompetensi_inti.length > 0
+                        data_kelas.find((k) => k.id === mapel.id_kelas)?.ref_mapel.data_kompetensi_inti.length > 0
                     ),
                     guru_mapel: list_mapel.length > 0 && list_mapel.every((mapel) => mapel.id_guru !== null),
                     penilaian: list_mapel.length > 0 && list_mapel.every((mapel) =>
                         mapel.id_kelas &&
-                        data_kelas.find(k => k.id === mapel.id_kelas)?.data_rencana_penilaian.length > 0
+                        data_kelas.find((k) => k.id === mapel.id_kelas)?.data_rencana_penilaian.length > 0
                     ),
                 };
 
@@ -625,7 +1226,7 @@ export class RombelKelasController {
 
             // Validasi input
             if (!id_rombels_list || !Array.isArray(id_rombels_list) || id_rombels_list.length === 0) {
-                return res.status(400).json({ message: 'id_rombels_list harus berupa array yang tidak kosong' });
+                return res.status(400).json({ message: 'Silakan lakukan sinkronsasi kelas terlebih dahulu' });
             }
 
             // Cari tahun ajaran sebelumnya
@@ -759,7 +1360,10 @@ export class RombelKelasController {
                                 nilai_maksimum: penilaian.nilai_maksimum,
                                 keterangan: penilaian.keterangan,
                                 urutan: penilaian.urutan,
-                                id_kd: penilaian.id_kd, // Menyalin id_kd jika ada
+                                id_kd: penilaian.id_kd,
+                                bulan: penilaian.bulan,
+                                hari: penilaian.hari,
+                                pekan: penilaian.pekan,
                             },
                         });
                     }

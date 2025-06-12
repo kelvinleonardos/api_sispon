@@ -1251,6 +1251,7 @@ export const getSantriHistory = async (req, res, next) => {
 
         res.status(200).json(santriData);
     } catch (error) {
+        console.log(error);
         next(error);
     }
 };

@@ -156,7 +156,7 @@ export class SemesterController {
 
       // 7. Success response
       res.status(201).json({
-        message: 'Semester created successfully',
+        message: 'Semester berhasil dibuat',
         data: semester,
       });
     } catch (error) {
@@ -242,7 +242,7 @@ export class SemesterController {
 
       if (duplicateSemester) {
         return res.status(400).json({
-          message: 'Another semester with the same tahun_ajaran and urutan already exists',
+          message: 'Semester lain dengan tahun ajaran dan urutan yang sama sudah ada',
         });
       }
 
@@ -257,7 +257,7 @@ export class SemesterController {
 
         if (activeSemester) {
           return res.status(400).json({
-            message: 'Another semester is already active. Only one semester can be active at a time.',
+            message: 'Semester lain sudah aktif. Hanya satu semester yang dapat aktif pada satu waktu.',
           });
         }
       }
@@ -267,7 +267,7 @@ export class SemesterController {
       const nama = `${semesterType} ${tahunAjaran.nama}`;
       if (nama.length > 50) {
         return res.status(400).json({
-          message: 'Semester name exceeds 50 characters',
+          message: 'Nama semester melebihi 50 karakter',
         });
       }
 
@@ -284,7 +284,7 @@ export class SemesterController {
 
       // 8. Success response
       res.status(200).json({
-        message: 'Semester updated successfully',
+        message: 'Semester berhasil diperbarui',
         data: semester,
       });
     } catch (error) {
@@ -358,10 +358,7 @@ export class SemesterController {
         tahun_ajaran: ref_tahun_ajaran.nama,
       };
 
-      res.status(200).json({
-        message: 'Semester retrieved successfully',
-        data: flatSemester,
-      });
+      res.status(200).json(flatSemester);
     } catch (error) {
       res.status(500).json({
         message: 'Failed to fetch semester',
@@ -459,7 +456,7 @@ export class SemesterController {
       };
 
       res.status(200).json({
-        message: 'Semester set as active successfully',
+        message: 'Berhasil mengaktifkan semester',
         data: flatUpdatedSemester,
       });
     } catch (error) {
@@ -477,7 +474,7 @@ export class SemesterController {
 
       if (isNaN(parsedId)) {
         return res.status(400).json({
-          message: 'Invalid semester ID',
+          message: 'ID semester tidak valid',
         });
       }
 
@@ -487,13 +484,13 @@ export class SemesterController {
 
       if (!semester) {
         return res.status(404).json({
-          message: 'Semester not found',
+          message: 'Semester tidak ditemukan',
         });
       }
 
       if (semester.id_master_kategori_status_ref_semester === 11) {
         return res.status(400).json({
-          message: 'Cannot delete an active semester',
+          message: 'Tidak dapat menghapus semester yang sedang aktif',
         });
       }
 
@@ -502,7 +499,7 @@ export class SemesterController {
       });
 
       res.status(200).json({
-        message: 'Semester deleted successfully',
+        message: 'Semester berhasil dihapus',
       });
     } catch (error) {
       res.status(500).json({

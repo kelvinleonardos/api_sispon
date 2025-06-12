@@ -110,15 +110,12 @@ export class KkmDetailController {
             }
 
             res.json({
-                success: true,
-                data: {
-                    id: kkmDetail.id,
-                    mapel_id: kkmDetail.mapel_id,
-                    mapel_nama: kkmDetail.ref_mapel?.nama || null,
-                    kkm: kkmDetail.kkm,
-                    tingkat_id: kkmDetail.tingkat_id,
-                    tingkat_nama: kkmDetail.ref_tingkat?.nama || null
-                }
+                id: kkmDetail.id,
+                mapel_id: kkmDetail.mapel_id,
+                mapel_nama: kkmDetail.ref_mapel?.nama || null,
+                kkm: kkmDetail.kkm,
+                tingkat_id: kkmDetail.tingkat_id,
+                tingkat_nama: kkmDetail.ref_tingkat?.nama || null
             });
         } catch (error) {
             next(error);
@@ -199,7 +196,7 @@ export class KkmDetailController {
             });
 
             res.json({
-                success: true,
+                message: "Berhasil memperbarui KKM",
                 data: updatedKkmDetail
             });
         } catch (error) {
@@ -229,7 +226,7 @@ export class KkmDetailController {
 
             res.json({
                 success: true,
-                message: "KKM Detail deleted successfully"
+                message: "KKM berhasil dihapus"
             });
         } catch (error) {
             next(error);

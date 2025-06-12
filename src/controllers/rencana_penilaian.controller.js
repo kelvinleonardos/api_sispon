@@ -147,4 +147,28 @@ export class RencanaPenilaianController {
         }
     }
 
+    static async deleteRencanaPenilaian(req, res, next) {
+        try {
+            const { id_rencana } = req.params;
+
+            // Validasi apakah rencana penilaian ada
+            const rencanaPenilaian = await prisma.data_rencana_penilaian.findUnique({
+                where: { id: parseInt(id_rencana) },
+            });
+
+            if (!rencanaPenilaian) {
+                return res.status(404).json({ message: 'Rencana penilaian tidak ditemukan' });
+            }
+
+            // Hapus rencana penilaian
+            await prisma.data_rencana_penilaian.delete({
+                where: { id: parseInt(id_rencana) },
+            });
+
+            res.status(200).json({ message: 'Rencana penilaian berhasil dihapus' });
+        } catch (e) {
+            next(e);
+        }
+    }
+
 }

@@ -9,6 +9,7 @@ import {upload} from "../middleware/upload.middleware.js";
 router.get('/print', PrestasiPelanggaranController.printPrestasiPelanggaran);
 router.get('/print-by-class', PrestasiPelanggaranController.printPrestasiPelanggaran);
 router.get('/print-by-santri', PrestasiPelanggaranController.printPrestasiPelanggaran);
+router.get('/santri/:id_santri', PrestasiPelanggaranController.getPrestasiPelanggaranBySantri);
 
 router.post('/', authenticate, checkPermission("CREATE-PRESTASI-PELANGGARAN"), upload.array("files", 5), PrestasiPelanggaranController.createPrestasiPelanggaran);
 router.get('/', authenticate, checkPermission("VIEW-PRESTASI-PELANGGARAN"), PrestasiPelanggaranController.getAllPrestasiPelanggaran);

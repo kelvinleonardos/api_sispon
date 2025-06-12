@@ -23,11 +23,14 @@ const storage = diskStorage({
         } else if (urlParts.includes('santris')) {
             folderName = 'foto_santri';
         } else if (urlParts.includes('prestasi-pelanggarans')) {
+            console.log(JSON.parse(req.body.data));
             if (JSON.parse(req.body.data).perihal === "prestasi") {
                 folderName = '/bukti-prpl/prestasi';
             } else if (JSON.parse(req.body.data).perihal === "pelanggaran") {
                 folderName = '/bukti-prpl/pelanggaran';
             }
+        } else if (urlParts.includes('nilai-karakter')) {
+            folderName = 'nilai_karakter';
         } else if (urlParts.includes('rombels')) {
             folderName = 'ttd_gp';
         } else if (urlParts.includes('rapors')) {
@@ -64,6 +67,10 @@ const storage = diskStorage({
             } else if (urlParts.includes('prestasi-pelanggarans')) {
                 name = data.id_santri
                     ? data.id_santri
+                    : file.originalname.split('.')[0].toLowerCase().replace(/\s+/g, '-');
+            } else if (urlParts.includes('nilai-karakter')) {
+                name = data.nama
+                    ? data.nama.toLowerCase().replace(/\s+/g, '-')
                     : file.originalname.split('.')[0].toLowerCase().replace(/\s+/g, '-');
             } else if (urlParts.includes('rombels')) {
                 name = 'ttd'

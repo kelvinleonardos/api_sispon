@@ -5,5 +5,6 @@ const router = express.Router();
 
 router.post('/', authenticate, RencanaPenilaianController.createRencanaPenilaian);
 router.put('/:id', authenticate, RencanaPenilaianController.updateRencanaPenilaian);
+router.delete('/:id_rencana', authenticate, RencanaPenilaianController.deleteRencanaPenilaian);
 
 export default router;

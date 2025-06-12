@@ -74,6 +74,11 @@ import raporRoutes from "./routes/rapor.route.js";
 import kkmRoutes from "./routes/kkm.route.js";
 import rosterRoutes from "./routes/roster.route.js";
 import kompetensiRoutes from "./routes/kompetensi.route.js";
+import jenjangRoutes from "./routes/jenjang.route.js";
+import dataNilaiKelasRoutes from "./routes/data_nilai_kelas.route.js";
+import izinSantriRoutes from "./routes/izin_santri.route.js";
+import catatanWkWfRoutes from "./routes/catatan_wk_wf.route.js";
+import dataNilaiEskulController from "./routes/data_nilai_eskul.route.js";
 
 app.use('/auth', authRoutes);
 app.use('/tahun-ajarans', tahunAjaranRoutes)
@@ -100,6 +105,11 @@ app.use('/rapors', raporRoutes);
 app.use('/kkms', kkmRoutes);
 app.use('/rosters', rosterRoutes);
 app.use('/kompetensis', kompetensiRoutes);
+app.use('/jenjangs', jenjangRoutes);
+app.use('/data-nilai-kelas', dataNilaiKelasRoutes);
+app.use('/izin-santris', izinSantriRoutes);
+app.use('/catatan-wk-wfs', catatanWkWfRoutes);
+app.use('/data-nilai-eskuls', dataNilaiEskulController);
 
 // Error handling
 app.use(errorHandler);
