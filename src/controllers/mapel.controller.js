@@ -1,4 +1,5 @@
 import { prisma } from "../prisma.js";
+import {getTokenPayload} from "../helpers.js";
 
 export class MapelController {
   static createMapel = async (req, res, next) => {
@@ -209,7 +210,7 @@ export class MapelController {
             return {
               id: mapel.id,
               kode: mapel.kode,
-              nama: mapel.nama,
+              nama: `${mapel.nama} - ${mapel.guru_pegawai.nama_gp}`,
               nama_arab: mapel.nama_arab,
               keterangan: mapel.keterangan,
               id_kurikulum: mapel.id_kurikulum,
@@ -225,6 +226,55 @@ export class MapelController {
       next(error);
     }
   };
+
+  static getAllRombelMapel = async (req, res, next) => {
+    try {
+        const { semester } = await getTokenPayload(req);
+        const { id_rombel } = req.params;
+
+      // Ambil data rombel kalau diberikan
+      if (!id_rombel) {
+        return res.status(404).json({ message: 'ID tidak ditemukan' });
+      }
+
+      const rombel = await prisma.data_rombel.findFirst({
+        where: { id: parseInt(id_rombel) },
+        include: {
+          ref_kelas: {
+            include: {
+              ref_tingkat: true
+            },
+          },
+        },
+      });
+
+      if (!rombel) {
+        return res.status(404).json({ message: 'Rombel tidak ditemukan' });
+      }
+
+      const data_kelas = await prisma.data_kelas.findMany({
+        where: {
+            id_rombel: parseInt(id_rombel),
+          id_semester: parseInt(semester.id),
+        },
+        include: {
+            ref_mapel: true
+        }
+      });
+
+      const formattedData = data_kelas.map((kelas) => {
+        return {
+          id: kelas.ref_mapel.id,
+          nama: kelas.ref_mapel.nama,
+        };
+      });
+
+      res.json(formattedData);
+    } catch (error) {
+      next(error);
+    }
+  };
+
 
   static getAllDetailMapel = async (req, res, next) => {
     try {

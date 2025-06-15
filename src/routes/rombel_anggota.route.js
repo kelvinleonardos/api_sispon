@@ -8,6 +8,7 @@ router.use(authenticate);
 
 router.get('/sync', RombelAnggotaController.syncRombel);
 router.put('/move', RombelAnggotaController.moveAnggota);
+router.put('/graduate', RombelAnggotaController.graduateSantri);
 
 router.get('/history/:id_santri', RombelAnggotaController.getRiwayatSantri);
 router.post('/', RombelAnggotaController.createRombelAnggota);

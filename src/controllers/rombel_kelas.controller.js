@@ -44,7 +44,7 @@ export class RombelKelasController {
                 .filter(id => !existingMapelIds.includes(id));
 
             if (newMapelIds.length === 0) {
-                return res.status(200).json({ message: 'Semua mapel yang diberikan sudah terdaftar untuk rombel ini' });
+                return res.status(400).json({ message: 'Semua mapel yang diberikan sudah terdaftar untuk rombel ini' });
             }
 
             // Verify that all mapel IDs exist in ref_mapel
@@ -1059,12 +1059,6 @@ export class RombelKelasController {
                 throw new Error('Kode pegawai tidak valid');
             }
 
-            const refKelas = await prisma.ref_kelas.findFirst({
-                where: {
-                    kelas: className,
-                },
-            });
-
             // Validasi tipe jika diberikan
             let kategori = null;
             if (tipe) {
@@ -1099,6 +1093,20 @@ export class RombelKelasController {
 
             // Tambahkan filter classid ke rombelWhereClause jika ada
             if (className) {
+                const name = className.split(" - ")[0].trim();
+                let gender = className.split(" - ")[1]?.trim() || null;
+                if (gender === "null") {
+                    gender = null;
+                }
+                const refKelas = await prisma.ref_kelas.findFirst({
+                    where: {
+                        kelas: name,
+                        gender: gender,
+                    },
+                });
+                if (!refKelas) {
+                    return res.status(404).json({ message: "Kelas tidak ditemukan" });
+                }
                 rombelWhereClause.id_kelas = parseInt(refKelas.id);
 
                 // Validasi apakah rombel ada

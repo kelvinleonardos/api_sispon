@@ -554,11 +554,19 @@ export const getAllSantri = async (req, res, next) => {
             // Ambil data rombel jika className bukan "no_class"
             let whereClause = { id_tahun_ajaran: tahunAjaran.id };
             if (className && className !== "") {
+                const name = className.split(" - ")[0].trim();
+                let gender = className.split(" - ")[1]?.trim() || null;
+                if (gender === "null") {
+                    gender = null;
+                }
                 const ref_kelas = await prisma.ref_kelas.findFirst({
-                    where: { kelas: className },
+                    where: {
+                        kelas: name,
+                        gender: gender,
+                    },
                 });
                 if (!ref_kelas) {
-                    return res.status(404).json({ message: `Kelas ${className} tidak ditemukan` });
+                    return res.status(404).json({ message: "Kelas tidak ditemukan" });
                 }
                 whereClause["id_kelas"] = ref_kelas.id;
             }
@@ -782,7 +790,10 @@ export const getSantriJumlahTakBerkelas = async (req, res, next) => {
         const totalSiswaTakBerkelas = await prisma.santri.count({
             where: {
                 AND: [
-                    anggotaIds.length > 0 ? { id: { notIn: anggotaIds } } : {}
+                    anggotaIds.length > 0 ? { id: { notIn: anggotaIds } } : {},
+                    {
+                        id_master_kategori_status_santri: 8
+                    }
                 ]
             }
         });
@@ -792,7 +803,10 @@ export const getSantriJumlahTakBerkelas = async (req, res, next) => {
             where: {
                 AND: [
                     anggotaIds.length > 0 ? { id: { notIn: anggotaIds } } : {},
-                    { jk: "L" }
+                    { jk: "L" },
+                    {
+                        id_master_kategori_status_santri: 8
+                    }
                 ]
             }
         });
@@ -802,7 +816,10 @@ export const getSantriJumlahTakBerkelas = async (req, res, next) => {
             where: {
                 AND: [
                     anggotaIds.length > 0 ? { id: { notIn: anggotaIds } } : {},
-                    { jk: "P" }
+                    { jk: "P" },
+                    {
+                        id_master_kategori_status_santri: 8
+                    }
                 ]
             }
         });
@@ -1494,16 +1511,24 @@ export const printSantriList = async (req, res, next) => {
 
         const { decoded, semester, tahunAjaran } = await getTokenPayload(req);
 
-        const ref_kelas = await prisma.ref_kelas.findFirst({
-            where: {
-                kelas: className
-            }
-        });
-
         // Build where clause for rombel query
         const whereClause = { id_tahun_ajaran: parseInt(tahunAjaran.id) };
 
         if (className) {
+            const name = className.split(" - ")[0].trim();
+            let gender = className.split(" - ")[1]?.trim() || null;
+            if (gender === "null") {
+                gender = null;
+            }
+            const ref_kelas = await prisma.ref_kelas.findFirst({
+                where: {
+                    kelas: name,
+                    gender: gender,
+                },
+            });
+            if (!ref_kelas) {
+                return res.status(404).json({ message: "Kelas tidak ditemukan" });
+            }
             whereClause["id_kelas"] = ref_kelas.id;
         }
 

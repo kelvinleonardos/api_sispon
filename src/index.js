@@ -80,6 +80,27 @@ import izinSantriRoutes from "./routes/izin_santri.route.js";
 import catatanWkWfRoutes from "./routes/catatan_wk_wf.route.js";
 import dataNilaiEskulController from "./routes/data_nilai_eskul.route.js";
 
+import beasiswaRouter from "./routes/beasiswa.route.js";
+import beasiswsSantriRouter from "./routes/beasiswa_santri.route.js";
+
+// import tagihanSantriRouter from "./routes/tagihan_santri.route.js";
+import SkemaTagihanRouter  from './routes/skema_tagihan.route.js';
+import dataTagihanRouter from "./routes/data_tagihan.route.js";
+import coaRouter from './routes/coa.route.js';
+
+import masterKarakterRoutes from './routes/master_karakter.route.js';
+import nilaiKarakterRoutes from './routes/nilai_karakter.route.js';
+
+import organisasiRoutes from './routes/organisasi.route.js';
+import dataAnggotaOrganisasiRoutes from './routes/data_anggota_organisasi.route.js';
+import dataNilaiiOrganisasiRoutes from './routes/data_nilai_organisasi.route.js';
+
+import rekapKehadiranRoutes from './routes/rekap_kehadiran.route.js';
+
+import lakRoutes from "./routes/lak.route.js";
+
+import dataNilaiLakRoutes from "./routes/data_nilai_lak.route.js";
+
 app.use('/auth', authRoutes);
 app.use('/tahun-ajarans', tahunAjaranRoutes)
 app.use('/guru-pegawais', guru_pegawaiRoutes);
@@ -110,6 +131,23 @@ app.use('/data-nilai-kelas', dataNilaiKelasRoutes);
 app.use('/izin-santris', izinSantriRoutes);
 app.use('/catatan-wk-wfs', catatanWkWfRoutes);
 app.use('/data-nilai-eskuls', dataNilaiEskulController);
+// app.use('/tagihan', tagihanSantriRouter)
+app.use('/skema-tagihan',SkemaTagihanRouter)
+app.use('/data-tagihan-santri', dataTagihanRouter)
+app.use('/coa', coaRouter);
+
+app.use('/master-karakter', masterKarakterRoutes);
+app.use('/nilai-karakter', nilaiKarakterRoutes);
+
+app.use('/organisasis', organisasiRoutes);
+app.use('/data-anggota-organisasis', dataAnggotaOrganisasiRoutes);
+app.use('/data-nilai-organisasis', dataNilaiiOrganisasiRoutes);
+
+app.use('/rekap-kehadirans', rekapKehadiranRoutes);
+
+app.use('/laks', lakRoutes);
+
+app.use('/data-nilai-laks', dataNilaiLakRoutes);
 
 // Error handling
 app.use(errorHandler);

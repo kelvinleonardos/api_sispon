@@ -45,11 +45,19 @@ export class RaporController {
 
             let whereClause = { id_tahun_ajaran: tahunAjaran.id };
             if (className && className !== "") {
+                const name = className.split(" - ")[0].trim();
+                let gender = className.split(" - ")[1]?.trim() || null;
+                if (gender === "null") {
+                    gender = null;
+                }
                 const ref_kelas = await prisma.ref_kelas.findFirst({
-                    where: { kelas: className },
+                    where: {
+                        kelas: name,
+                        gender: gender,
+                    },
                 });
                 if (!ref_kelas) {
-                    return res.status(404).json({ message: `Kelas ${className} tidak ditemukan` });
+                    return res.status(404).json({ message: "Kelas tidak ditemukan" });
                 }
                 whereClause["id_kelas"] = ref_kelas.id;
             }
@@ -703,6 +711,43 @@ class RaporHelper {
                 };
             });
 
+            const status_kehadiran = await prisma.ref_master_kategori.findMany({
+                where: {
+                    tipe: 'status_izin_santri',
+                },
+                select: {
+                    id: true,
+                    nama: true,
+                },
+                orderBy: {
+                    id: 'asc',
+                },
+            });
+
+            // Fetch attendance data
+            const kehadiran = await prisma.data_kehadiran_santri.findMany({
+                where: {
+                    id_santri: parseInt(id_santri),
+                    id_semester: semester.id,
+                },
+                include: {
+                    ref_master_kategori: {
+                        select: {
+                            nama: true,
+                        },
+                    },
+                },
+            });
+
+            // Create simplified attendance array
+            const simplifiedKehadiran = status_kehadiran.map((status) => {
+                const attendance = kehadiran.find((k) => k.id_status === status.id);
+                return {
+                    status: status.nama,
+                    jumlah: attendance ? attendance.jumlah : 0,
+                };
+            });
+
             const catatan = await prisma.data_rombel_anggota.findFirst({
                 where: {
                     id_santri: parseInt(id_santri),
@@ -725,6 +770,7 @@ class RaporHelper {
                 ki3,
                 ki4,
                 eskul: simplifiedEskul,
+                kehadiran: simplifiedKehadiran,
                 catatan: catatan.catatan_wk_as || '',
             };
         } catch (error) {

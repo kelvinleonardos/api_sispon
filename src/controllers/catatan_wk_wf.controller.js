@@ -11,11 +11,19 @@ export class CatatanWkWfController {
             // Validasi className dan ambil id_kelas jika diberikan
             let ref_kelas = null;
             if (className) {
+                const name = className.split(" - ")[0].trim();
+                let gender = className.split(" - ")[1]?.trim() || null;
+                if (gender === "null") {
+                    gender = null;
+                }
                 ref_kelas = await prisma.ref_kelas.findFirst({
-                    where: { kelas: className },
+                    where: {
+                        kelas: name,
+                        gender: gender,
+                    },
                 });
                 if (!ref_kelas) {
-                    throw new Error('Kelas tidak ditemukan');
+                    return res.status(404).json({ message: "Kelas tidak ditemukan" });
                 }
             }
 
@@ -121,11 +129,19 @@ export class CatatanWkWfController {
             // Validasi className dan ambil id_kelas jika diberikan
             let ref_kelas = null;
             if (className) {
+                const name = className.split(" - ")[0].trim();
+                let gender = className.split(" - ")[1]?.trim() || null;
+                if (gender === "null") {
+                    gender = null;
+                }
                 ref_kelas = await prisma.ref_kelas.findFirst({
-                    where: { kelas: className },
+                    where: {
+                        kelas: name,
+                        gender: gender,
+                    },
                 });
                 if (!ref_kelas) {
-                    throw new Error('Kelas tidak ditemukan');
+                    return res.status(404).json({ message: "Kelas tidak ditemukan" });
                 }
             }
 

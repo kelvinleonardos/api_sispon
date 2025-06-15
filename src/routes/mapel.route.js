@@ -6,6 +6,7 @@ const router = express.Router();
 // Apply authentication middleware to all routes
 router.use(authenticate);
 
+router.get('/kelas/:id_rombel', MapelController.getAllRombelMapel);
 router.get('/tipe', MapelController.getMapelTipe);
 router.get('/all-detail', authenticate, MapelController.getAllDetailMapel);
 router.get('/mapel-detail/:id_mapel', authenticate, MapelController.getDetailMapelById);

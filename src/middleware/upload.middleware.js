@@ -35,6 +35,8 @@ const storage = diskStorage({
             folderName = 'ttd_gp';
         } else if (urlParts.includes('rapors')) {
             folderName = 'ttd_kepsek';
+        } else if (urlParts.includes('upload-batch-nilai')) {
+            folderName = 'batch_nilai_kelas';
         }
         const destPath = join(baseDir, folderName);
 
@@ -76,6 +78,8 @@ const storage = diskStorage({
                 name = 'ttd'
             } else if (urlParts.includes('rapors')) {
                 name = 'ttd-kepsek'
+            } else if (urlParts.includes('upload-batch-nilai')) {
+                name = 'batch-nilai-kelas';
             }
         } catch (err) {
             console.error(`Error parsing request body data: ${err.message}`);

@@ -1,17 +1,18 @@
 import { AppError } from "../middleware/errorHandler.js";
 import { prisma } from "../prisma.js";
 
+const TYPES = {
+	SEKOLAH: 26,
+	ASRAMA:25
+}
+
 export class MasterKarakterController {
 	static getKategoriKarakter = async (req, res, next) => {
 		try {
 			const master_karakter =
 				await prisma.ref_karakter_kategori.findMany();
 
-			return res.status(200).json({
-				success: true,
-				message: "kategori karakter berhasil diambil",
-				data: master_karakter,
-			});
+			return res.status(201).json(master_karakter);
 		} catch (error) {
 			next(new AppError(error.message, 500));
 		}
@@ -29,11 +30,7 @@ export class MasterKarakterController {
 			if (!kategori_karakter) {
 				return next(new AppError("Kategori not found", 404));
 			}
-			return res.status(200).json({
-				success: true,
-				message: "kategori karakter berhasil diambil",
-				data: kategori_karakter,
-			});
+			return res.status(200).json(kategori_karakter);
 		} catch (error) {
 			next(new AppError(error.message, 500));
 		}
@@ -51,9 +48,9 @@ export class MasterKarakterController {
 					},
 				}
 			);
-			return res.status(200).json({
+			return res.status(201).json({
 				success: true,
-				message: "kategori karakter berhasil ditambahkan",
+				message: "Kategori karakter berhasil ditambahkan",
 				data: kategori_karakter,
 			});
 		} catch (error) {
@@ -128,7 +125,7 @@ export class MasterKarakterController {
 
 	static getKriteriaKarakter = async (req, res, next) => {
 		try {
-			const { group, type, cat } = req.query;
+			const { type, cat, group } = req.query;
 
 			const karakterWhereClause = {};
 			if (type && type !== "all") {
@@ -140,43 +137,31 @@ export class MasterKarakterController {
 			}
 
 			if (cat && cat !== "all") {
-				const kelompokKarakter =
-					await prisma.ref_karakter_kategori.findFirst({
-						where: {
-							nama: cat,
-						},
-						include: {
-							ref_kriteria_karakter: true,
-						},
-					});
-				console.log(kelompokKarakter)
-				if (
-					kelompokKarakter &&
-					kelompokKarakter.ref_kriteria_karakter
-				) {
-					// const kriteriaList =
-					// 	kelompokKarakter.ref_kriteria_karakter.map((k) => ({
-					// 		id: k.id,
-					// 	}));
-					// karakterWhereClause.id_kriteria = {
-					// 	in: kriteriaList.map((k) => k.id),
-					// };
-					// console.log(kelompokKarakter.ref_kriteria_karakter.map((k) => (k.id)))
+				const kelompokKarakter = await prisma.ref_karakter_kategori.findFirst({
+					where: {
+						nama: cat,
+					},
+					include: {
+						ref_kriteria_karakter: true,
+					},
+				});
+
+				if (kelompokKarakter && kelompokKarakter.ref_kriteria_karakter) {
 					karakterWhereClause.id = {
-						in: kelompokKarakter.ref_kriteria_karakter.map((k) => (k.id)),
+						in: kelompokKarakter.ref_kriteria_karakter.map((k) => k.id),
 					};
 				} else {
 					karakterWhereClause.id = { in: [] };
 				}
 			}
-			const kriteria_karakter =
-				await prisma.ref_kriteria_karakter.findMany({
-					where: karakterWhereClause,
-					include: {
-						ref_karakter_kategori: true,
-						ref_master_kategori: true,
-					},
-				});
+
+			const kriteria_karakter = await prisma.ref_kriteria_karakter.findMany({
+				where: karakterWhereClause,
+				include: {
+					ref_karakter_kategori: true,
+					ref_master_kategori: true,
+				},
+			});
 
 			const mappedData = kriteria_karakter.map((item) => ({
 				id: item.id,
@@ -184,29 +169,28 @@ export class MasterKarakterController {
 				nama: item.nama,
 				deskripsi: item.deskripsi,
 				basis: item.ref_master_kategori.nama,
+				is_aktif: item.is_aktif,
 			}));
 
 			if (group === "true") {
-				const groupedData = mappedData.reduce((acc, item) => {
-					if (!acc[item.kategori]) {
-						acc[item.kategori] = [];
-					}
-					acc[item.kategori].push(item);
-					return acc;
-				}, {});
+				// Kelompokkan data berdasarkan kategori, tapi kembalikan sebagai array
+				const groupedData = Object.entries(
+					mappedData.reduce((acc, item) => {
+						if (!acc[item.kategori]) {
+							acc[item.kategori] = [];
+						}
+						acc[item.kategori].push(item);
+						return acc;
+					}, {})
+				).map(([kategori, items]) => ({
+					kategori,
+					items,
+				}));
 
-				return res.status(200).json({
-					success: true,
-					message: "kriteria karakter berhasil diambil",
-					data: groupedData,
-				});
+				return res.status(200).json(groupedData);
 			}
 
-			return res.status(200).json({
-				success: true,
-				message: "kriteria karakter berhasil diambil",
-				data: mappedData,
-			});
+			return res.status(200).json(mappedData);
 		} catch (error) {
 			next(new AppError(error.message, 500));
 		}
@@ -285,10 +269,10 @@ export class MasterKarakterController {
 						id: parseInt(id),
 					},
 					data: {
-						kategori: parseInt(kategori),
+						id_kategori: parseInt(kategori),
 						nama,
 						deskripsi,
-						basis: parseInt(basis),
+						id_basis_lokasi: parseInt(basis),
 					},
 				}
 			);
@@ -335,7 +319,7 @@ export class MasterKarakterController {
 		try {
 			const { kategori, nama, deskripsi, basis } = req.body;
 
-			const checkKategori = await prisma.ref_master_kategori.findFirst({
+			const checkKategori = await prisma.ref_karakter_kategori.findFirst({
 				where: {
 					id: parseInt(kategori),
 				},
@@ -368,6 +352,109 @@ export class MasterKarakterController {
 			return res.status(200).json({
 				success: true,
 				message: "kriteria karakter berhasil ditambahkan",
+				data: kriteria_karakter,
+			});
+		} catch (error) {
+			next(new AppError(error.message, 500));
+		}
+	};
+
+	static createKategoriKarakterdanKriteria = async (req, res, next) => {
+		try {
+			const { nama, kriteria, tipe } = req.body;
+
+			if(!nama || !kriteria || !Array.isArray(kriteria) || kriteria.length === 0) {
+				return next(new AppError("Nama kategori dan kriteria harus diisi", 400));
+			}
+
+			const normalizedType = tipe.toUpperCase();
+
+			console.log("Normalized Type:", normalizedType);
+			// console.log("Available Types:", Object.values(TYPES));
+			// console.log("Available Keys:", Object.keys(TYPES));
+			// console.log(Object.keys(TYPES).includes(normalizedType));
+			// console.log("TYPES:", TYPES[normalizedType]);
+			// return next(new AppError("Tipe harus diisi", 400));
+
+			if(!Object.keys(TYPES).includes(normalizedType)) {
+				return next(
+					new AppError(
+						`Tipe harus salah satu dari: ${Object.keys(TYPES).join(", ")}`,
+						400
+					)
+				);
+			}
+
+			// Execute transaction
+			const kategori_karakter = await prisma.$transaction(async (tx) => {
+				// Create the new kategori_karakter
+				const newKategori = await tx.ref_karakter_kategori.create({
+					data: {
+						nama: nama.trim(),
+					},
+					select: {
+						id: true,
+						nama: true,
+					},
+				});
+
+				// Create the kriteria_karakter for each kriteria
+				const kriteriaPromises = kriteria.map((k) =>
+					tx.ref_kriteria_karakter.create({
+						data: {
+							nama: k.nama.trim(),
+							deskripsi: k.deskripsi ? k.deskripsi.trim() : null,
+							id_kategori: newKategori.id,
+							id_basis_lokasi: TYPES[normalizedType],
+							is_aktif: k.is_aktif !== undefined ? k.is_aktif : true,
+						},
+					})
+				);
+
+				// Wait for all kriteria to be created
+				await Promise.all(kriteriaPromises);
+
+				return newKategori;
+			});
+
+			return res.status(201).json({
+				success: true,
+				message: "Kategori karakter dan kriteria berhasil ditambahkan",
+				data: kategori_karakter,
+			});
+		} catch (error) {
+			next(new AppError(error.message, 500));
+		}
+	};
+
+	static setActive = async (req, res, next) => {
+		try {
+			const { id } = req.params;
+
+			// Periksa apakah kriteria ada
+			const checkKriteria = await prisma.ref_kriteria_karakter.findFirst({
+				where: {
+					id: parseInt(id),
+				},
+			});
+
+			if (!checkKriteria) {
+				return next(new AppError("Kriteria not found", 404));
+			}
+
+			// Ubah status is_aktif (toggle)
+			const kriteria_karakter = await prisma.ref_kriteria_karakter.update({
+				where: {
+					id: parseInt(id),
+				},
+				data: {
+					is_aktif: !checkKriteria.is_aktif,
+				},
+			});
+
+			return res.status(200).json({
+				success: true,
+				message: `Kriteria karakter berhasil diubah menjadi ${kriteria_karakter.is_aktif ? 'aktif' : 'inaktif'}`,
 				data: kriteria_karakter,
 			});
 		} catch (error) {

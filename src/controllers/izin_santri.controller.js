@@ -31,9 +31,19 @@ export class IzinSantriController {
             // Validasi className dan ambil id_kelas jika diberikan
             let ref_kelas = null;
             if (className) {
+                const name = className.split(" - ")[0].trim();
+                let gender = className.split(" - ")[1]?.trim() || null;
+                if (gender === "null") {
+                    gender = null;
+                }
+                // Konversi string "null" ke null
+                if (gender === "null") {
+                    gender = null;
+                }
                 ref_kelas = await prisma.ref_kelas.findFirst({
                     where: {
-                        kelas: className,
+                        kelas: name,
+                        gender: gender,
                     },
                 });
                 if (!ref_kelas) {
@@ -154,9 +164,10 @@ export class IzinSantriController {
                     }
                     acc[item.id_santri].push({
                         id: item.id,
+                        id_status: item.id_status,
                         tujuan: item.tujuan || null,
-                        tgl_mulai: item.tgl_mulai ? formatTanggal(new Date(item.tgl_mulai)) : null,
-                        tgl_selesai: item.tgl_selesai ? formatTanggal(new Date(item.tgl_selesai)) : null,
+                        tgl_mulai: item.tgl_mulai || null,
+                        tgl_selesai: item.tgl_selesai || null,
                         durasi: hitungDurasi(item.tgl_mulai, item.tgl_selesai),
                         catatan: item.catatan || null,
                         status: item.ref_master_kategori ? item.ref_master_kategori.nama : null,
@@ -339,6 +350,8 @@ export class IzinSantriController {
         try {
             const { id_santri, tujuan, tgl_mulai, tgl_selesai, catatan, id_status } = req.body;
             const { decoded, semester, tahunAjaran } = await getTokenPayload(req);
+
+            console.log(req.body);
 
             // Validasi input
             if (!id_santri || !tujuan || !tgl_mulai || !tgl_selesai || !id_status) {

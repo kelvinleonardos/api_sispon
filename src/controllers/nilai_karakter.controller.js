@@ -13,19 +13,34 @@ import {
 export class NilaiKarakterController {
     static getAllNilaiKarakter = async (req, res, next) => {
         try {
-            const { groupbyclass, class: className, type, cat } = req.query;
+            const {
+                groupbyclass,
+                class: className,
+                type,
+                cat,
+                bulan,
+            } = req.query;
             const { decoded, semester, tahunAjaran } = await getTokenPayload(
                 req
             );
 
             const rombelWhereClause = { id_tahun_ajaran: tahunAjaran.id };
             if (className) {
-                const ruanganKelas = await prisma.ref_kelas.findFirst({
+                const name = className.split(" - ")[0].trim();
+                let gender = className.split(" - ")[1]?.trim() || null;
+                if (gender === "null") {
+                    gender = null;
+                }
+                const ref_kelas = await prisma.ref_kelas.findFirst({
                     where: {
-                        kelas: className,
+                        kelas: name,
+                        gender: gender,
                     },
                 });
-                rombelWhereClause["id_kelas"] = parseInt(ruanganKelas.id);
+                if (!ref_kelas) {
+                    return res.status(404).json({ message: "Kelas tidak ditemukan" });
+                }
+                rombelWhereClause["id_kelas"] = parseInt(ref_kelas.id);
             }
 
             const rombels = await prisma.data_rombel.findMany({
@@ -77,6 +92,10 @@ export class NilaiKarakterController {
                     }
                 }
 
+                if (bulan && bulan !== "all") {
+                    karakterWhereClause.bulan = parseInt(bulan);
+                }
+
                 if (cat && cat !== "all") {
                     const kelompokKarakter =
                         await prisma.ref_karakter_kategori.findFirst({
@@ -104,9 +123,7 @@ export class NilaiKarakterController {
                         // };
                         karakterWhereClause.id_kriteria = {
                             in: kelompokKarakter.ref_kriteria_karakter.map(
-                                (k) => ({
-                                    id: k.id,
-                                })
+                                (k) => k.id
                             ),
                         };
                     } else {
@@ -125,23 +142,6 @@ export class NilaiKarakterController {
                             },
                         },
                     });
-                // console.log(karakterWhereClause)
-                // console.log(nilaiKatakterList);
-
-                // const nilaiMap = nilaiKatakterList.reduce((acc, item) => {
-                // 	if (!acc[item.id_santri]) {
-                // 		acc[item.id_santri] = [];
-                // 	}
-                // 	acc[item.id_santri].push({
-                // 		id: item.id,
-                // 		karakter: item.ref_karakter.nama,
-                // 		kategori: item.ref_karakter_kategori.nama,
-                // 		nilai: item.nilai,
-                //         bulan: item.bulan,
-                //         minggu: item.minggu,
-                // 	});
-                // 	return acc;
-                // }, {});
 
                 const nilaiMap = nilaiKatakterList.reduce((acc, item) => {
                     if (!acc[item.id_santri]) {
@@ -267,11 +267,22 @@ export class NilaiKarakterController {
                 where: {
                     id: { in: santriIds },
                 },
-                select: {
-                    id: true,
-                    nis: true,
-                    nama: true,
-                },
+                include: {
+                    data_rombel_anggota: {
+                        where: {
+                            data_rombel: {
+                                id_tahun_ajaran: tahunAjaran.id,
+                            }
+                        },
+                        include: {
+                            data_rombel: {
+                                include: {
+                                    ref_kelas: true,
+                                }
+                            }
+                        }
+                    },
+                }
             });
             const santriMap = santriList.reduce((acc, santri) => {
                 acc[santri.id] = santri;
@@ -284,6 +295,7 @@ export class NilaiKarakterController {
                     acc[index + 1] = {
                         id: santri.id,
                         nis: santri.nis,
+                        kelas: santri.data_rombel_anggota[0]?.data_rombel?.ref_kelas?.kelas || "Tidak Ditemukan",
                         nama: santri.nama,
                         total_nilai: item._sum.nilai,
                     };
@@ -293,11 +305,7 @@ export class NilaiKarakterController {
             );
             // const rangkingMap = nilaiKatakterList.reduce((acc, item) => {
             // console.log(nilaiKatakterList);
-            return res.status(200).json({
-                success: true,
-                message: "Rangking santri berhasil diambil",
-                data: nilaiRankMap,
-            });
+            return res.status(200).json(nilaiRankMap);
         } catch (error) {
             next(new AppError(error.message, 500));
         }
@@ -305,7 +313,7 @@ export class NilaiKarakterController {
 
     static getModalData = async (req, res, next) => {
         try {
-            const { class: className, type, cat, week, month } = req.query;
+            const { class: className, type, cat, pekan, bulan } = req.query;
             const { decoded, semester, tahunAjaran } = await getTokenPayload(
                 req
             );
@@ -317,12 +325,21 @@ export class NilaiKarakterController {
             }
 
             const rombelWhereClause = { id_tahun_ajaran: tahunAjaran.id };
-            const ruanganKelas = await prisma.ref_kelas.findFirst({
+            const name = className.split(" - ")[0].trim();
+            let gender = className.split(" - ")[1]?.trim() || null;
+            if (gender === "null") {
+                gender = null;
+            }
+            const ref_kelas = await prisma.ref_kelas.findFirst({
                 where: {
-                    kelas: className,
+                    kelas: name,
+                    gender: gender,
                 },
             });
-            rombelWhereClause["id_kelas"] = parseInt(ruanganKelas.id);
+            if (!ref_kelas) {
+                return res.status(404).json({ message: "Kelas tidak ditemukan" });
+            }
+            rombelWhereClause["id_kelas"] = parseInt(ref_kelas.id);
 
             const rombel = await prisma.data_rombel.findFirst({
                 where: rombelWhereClause,
@@ -440,14 +457,300 @@ export class NilaiKarakterController {
             };
             karakterWhereClause.id_semester = semester.id;
             karakterWhereClause.id_tahun_ajaran = tahunAjaran.id;
-            if (!week) {
-                return next(new AppError("query week tidak boleh kosong", 400));
+            if (!pekan) {
+                return next(
+                    new AppError("query pekan tidak boleh kosong", 400)
+                );
             }
-            // if (week && week !== "all") {
-            karakterWhereClause.minggu = parseInt(week);
+            // if (pekan && pekan !== "all") {
+            karakterWhereClause.minggu = parseInt(pekan);
             // }
-            if (month && month !== "all") {
-                karakterWhereClause.bulan = parseInt(month);
+            if (bulan && bulan !== "all") {
+                karakterWhereClause.bulan = parseInt(bulan);
+            }
+            // console.log(karakterWhereClause);
+            delete karakterWhereClause.id;
+
+            const nilaiSantri = await prisma.data_nilai_karakter.findMany({
+                where: karakterWhereClause,
+                include: {
+                    ref_kriteria_karakter: {
+                        include: {
+                            ref_karakter_kategori: true,
+                        },
+                    },
+                    santri: true,
+                },
+            });
+
+            const nilaiMap = nilaiSantri.map((item) => ({
+                id: item.id,
+                id_santri: item.id_santri,
+                // nama_santri: item.santri.nama,
+                nis_santri: item.santri.nis,
+                nama_santri: item.santri.nama,
+                karakter: item.ref_kriteria_karakter.nama,
+                karakter_id: item.ref_kriteria_karakter.id,
+                kategori: item.ref_kriteria_karakter.ref_karakter_kategori.nama,
+                nilai: item.nilai,
+                // bulan: item.bulan,
+                minggu: item.minggu,
+            }));
+
+            // console.log("niliaMap",nilaiMap);
+            // gabung santriList dengan nilaiMap
+            // const santriMap = santriList.reduce((acc, santri) => {
+            // 	acc[santri.id] = santri;
+            // 	return acc;
+            // }, {});
+            // console.log(santriList);
+            const santriListWithNilai = santriList.map((santri) => {
+                const nilaiSantri = nilaiMap.filter(
+                    (n) => n.id_santri === santri.id
+                );
+                return {
+                    ...santri,
+                    nilai: nilaiSantri,
+                };
+            });
+            // console.log(santriListWithNilai);
+
+            const datas = {
+                header: groupHeader,
+                nilai: santriListWithNilai,
+            };
+
+            // const rowData = []
+
+            const rowData = santriList.map((santri) => {
+                let dataSantri = {
+                    id: santri.id,
+                    nis: santri.nis,
+                    nama: santri.nama,
+                    nilai: []
+                };
+                header.forEach((item) => {
+                    const nilai = nilaiMap.find(
+                        (n) =>
+                            n.id_santri === santri.id &&
+                            n.karakter_id === item.id
+                    );
+                    const karakter_nilai = nilai ? nilai.nilai : "";
+                    dataSantri.nilai.push({
+                        id: item.id,
+                        nama: item.nama,
+                        nilai: karakter_nilai,
+                    })
+                });
+                return dataSantri;
+            });
+
+            // const x = header.map((item) => {
+            // const y = santriList.map((santri) => {
+            // 	const nilai = nilaiMap.find(
+            // 		(n) =>
+            // 			n.id_santri === santri.id &&
+            // 			n.karakter_id === item.id
+            // 	);
+            // 	return {
+            // 		id: item.id,
+            // 		nama: item.nama,
+            // 		kategori: item.kategori,
+            // 		nilai: nilai ? nilai.nilai : "",
+            // 		// bulan: nilai ? nilai.bulan : "",
+            // 		minggu: nilai ? nilai.minggu : "",
+            // 		nis_santri: santri.nis,
+            // 		nama_santri: santri.nama,
+            // 	};
+            // })
+            // return {
+            // 	nis: "",
+            // 	nama: "",
+            // }
+            // });
+
+            // console.log("data", x);
+            // console.log("header", header);
+            // rowData.push(...x);
+            // console.log("rowData", rowData);
+
+            // return await writeExcelFilewithSubheader(
+            // 	res,
+            // 	data,
+            // 	"template_nilai_karakter"
+            // );
+            // return await writeExcelFilewithSubheader2(
+            // 	res,
+            // 	groupHeader,
+            // 	r,
+            // 	"template_nilai_karakter",
+            // 	// "Data Nilai Karakter"
+            // )
+            return res.status(200).json({
+                header,
+                rowData,
+            });
+        } catch (error) {
+            next(new AppError(error.message, 500));
+        }
+    };
+
+    static getRombelDetail = async (req, res, next) => {
+        try {
+            const { class: className, type, cat, pekan, bulan } = req.query;
+            const { decoded, semester, tahunAjaran } = await getTokenPayload(
+                req
+            );
+
+            if (!className) {
+                return next(
+                    new AppError("query class tidak boleh kosong", 400)
+                );
+            }
+
+            const rombelWhereClause = { id_tahun_ajaran: tahunAjaran.id };
+            const name = className.split(" - ")[0].trim();
+            let gender = className.split(" - ")[1]?.trim() || null;
+            if (gender === "null") {
+                gender = null;
+            }
+            const ref_kelas = await prisma.ref_kelas.findFirst({
+                where: {
+                    kelas: name,
+                    gender: gender,
+                },
+            });
+            if (!ref_kelas) {
+                return res.status(404).json({ message: "Kelas tidak ditemukan" });
+            }
+            rombelWhereClause["id_kelas"] = parseInt(ref_kelas.id);
+
+            const rombel = await prisma.data_rombel.findFirst({
+                where: rombelWhereClause,
+                include: {
+                    data_rombel_anggota: {
+                        select: {
+                            id_santri: true,
+                        },
+                    },
+                    ref_kelas: true,
+                },
+            });
+
+            // console.log(rombel);
+
+            const santriIds = rombel.data_rombel_anggota.map(
+                (anggota) => anggota.id_santri
+            );
+
+            const santriList = await prisma.santri.findMany({
+                where: {
+                    id: {
+                        in: santriIds,
+                    },
+                },
+                select: { id: true, nis: true, nama: true },
+            });
+            // pass data santrilist to excel template generator
+            // const nilaiKatakterList =
+            // 	await prisma.data_nilai_karakter.findMany({
+
+            const karakterWhereClause = {};
+            if (type && type !== "all") {
+                if (type === "asrama") {
+                    karakterWhereClause.id_basis_lokasi = 25;
+                } else if (type === "sekolah") {
+                    karakterWhereClause.id_basis_lokasi = 26;
+                }
+            }
+
+            if (cat && cat !== "all") {
+                const kelompokKarakter =
+                    await prisma.ref_karakter_kategori.findFirst({
+                        where: {
+                            nama: cat,
+                        },
+                        include: {
+                            ref_kriteria_karakter: {
+                                where: {
+                                    is_aktif: true,
+                                },
+                            },
+                        },
+                    });
+                // console.log(kelompokKarakter);
+                if (
+                    kelompokKarakter &&
+                    kelompokKarakter.ref_kriteria_karakter
+                ) {
+                    // const kriteriaList =
+                    // 	kelompokKarakter.ref_kriteria_karakter.map((k) => ({
+                    // 		id: k.id,
+                    // 	}));
+                    // karakterWhereClause.id_kriteria = {
+                    // 	in: kriteriaList.map((k) => k.id),
+                    // };
+                    // console.log(kelompokKarakter.ref_kriteria_karakter.map((k) => (k.id)))
+                    karakterWhereClause.id = {
+                        in: kelompokKarakter.ref_kriteria_karakter.map(
+                            (k) => k.id
+                        ),
+                    };
+                } else {
+                    karakterWhereClause.id = { in: [] };
+                }
+
+                // karakterWhereClause.is_aktif = true;
+            }
+            const kriteria_karakter =
+                await prisma.ref_kriteria_karakter.findMany({
+                    where: karakterWhereClause,
+                    include: {
+                        ref_karakter_kategori: true,
+                        ref_master_kategori: true,
+                    },
+                });
+
+            const header = kriteria_karakter.map((item) => ({
+                id: item.id,
+                kategori: item.ref_karakter_kategori.nama,
+                nama: item.nama,
+                deskripsi: item.deskripsi,
+                basis: item.ref_master_kategori.nama,
+            }));
+
+            const groupHeader = header.reduce((acc, item) => {
+                if (!acc[item.kategori]) {
+                    acc[item.kategori] = {
+                        items: [],
+                        length: 0,
+                    };
+                }
+                acc[item.kategori].items.push(item);
+                acc[item.kategori].length = acc[item.kategori].items.length;
+                return acc;
+            }, {});
+
+            // console.log(groupHeader);
+
+            karakterWhereClause.id_santri = {
+                in: santriIds,
+            };
+            karakterWhereClause.id_kriteria = {
+                in: kriteria_karakter.map((k) => k.id),
+            };
+            karakterWhereClause.id_semester = semester.id;
+            karakterWhereClause.id_tahun_ajaran = tahunAjaran.id;
+            if (!pekan) {
+                return next(
+                    new AppError("query pekan tidak boleh kosong", 400)
+                );
+            }
+            // if (pekan && pekan !== "all") {
+            karakterWhereClause.minggu = parseInt(pekan);
+            // }
+            if (bulan && bulan !== "all") {
+                karakterWhereClause.bulan = parseInt(bulan);
             }
             // console.log(karakterWhereClause);
             delete karakterWhereClause.id;
@@ -571,12 +874,13 @@ export class NilaiKarakterController {
         }
     };
 
-    static generateExcelTemplate = async (req, res, next) => {
+    static getRombelDetailV2 = async (req, res, next) => {
         try {
-            const { class: className, type, cat, week, month } = req.query;
+            const { class: className, type, cat, pekan, bulan } = req.query;
             const { decoded, semester, tahunAjaran } = await getTokenPayload(
                 req
             );
+            // console.log("decoded", decoded);
 
             if (!className) {
                 return next(
@@ -585,12 +889,21 @@ export class NilaiKarakterController {
             }
 
             const rombelWhereClause = { id_tahun_ajaran: tahunAjaran.id };
-            const ruanganKelas = await prisma.ref_kelas.findFirst({
+            const name = className.split(" - ")[0].trim();
+            let gender = className.split(" - ")[1]?.trim() || null;
+            if (gender === "null") {
+                gender = null;
+            }
+            const ref_kelas = await prisma.ref_kelas.findFirst({
                 where: {
-                    kelas: className,
+                    kelas: name,
+                    gender: gender,
                 },
             });
-            rombelWhereClause["id_kelas"] = parseInt(ruanganKelas.id);
+            if (!ref_kelas) {
+                return res.status(404).json({ message: "Kelas tidak ditemukan" });
+            }
+            rombelWhereClause["id_kelas"] = parseInt(ref_kelas.id);
 
             const rombel = await prisma.data_rombel.findFirst({
                 where: rombelWhereClause,
@@ -600,11 +913,10 @@ export class NilaiKarakterController {
                             id_santri: true,
                         },
                     },
-                    ref_kelas: true,
                 },
             });
 
-            // console.log(rombel);
+            console.log(rombel);
 
             const santriIds = rombel.data_rombel_anggota.map(
                 (anggota) => anggota.id_santri
@@ -666,6 +978,8 @@ export class NilaiKarakterController {
                 } else {
                     karakterWhereClause.id = { in: [] };
                 }
+
+                // karakterWhereClause.is_aktif = true;
             }
             const kriteria_karakter =
                 await prisma.ref_kriteria_karakter.findMany({
@@ -706,14 +1020,16 @@ export class NilaiKarakterController {
             };
             karakterWhereClause.id_semester = semester.id;
             karakterWhereClause.id_tahun_ajaran = tahunAjaran.id;
-            if (!week) {
-                return next(new AppError("query week tidak boleh kosong", 400));
+            if (!pekan) {
+                return next(
+                    new AppError("query pekan tidak boleh kosong", 400)
+                );
             }
-            // if (week && week !== "all") {
-            karakterWhereClause.minggu = parseInt(week);
+            // if (pekan && pekan !== "all") {
+            karakterWhereClause.minggu = parseInt(pekan);
             // }
-            if (month && month !== "all") {
-                karakterWhereClause.bulan = parseInt(month);
+            if (bulan && bulan !== "all") {
+                karakterWhereClause.bulan = parseInt(bulan);
             }
             // console.log(karakterWhereClause);
             delete karakterWhereClause.id;
@@ -760,6 +1076,236 @@ export class NilaiKarakterController {
                     nilai: nilaiSantri,
                 };
             });
+
+            const rowData = santriList.map((santri) => {
+                let dataSantri = {
+                    id: santri.id,
+                    nis: santri.nis,
+                    nama: santri.nama,
+                };
+                header.forEach((item) => {
+                    const nilai = nilaiMap.find(
+                        (n) =>
+                            n.id_santri === santri.id &&
+                            n.karakter_id === item.id
+                    );
+                    const karakter_nilai = nilai ? nilai.nilai : "";
+                    dataSantri[item.nama] = karakter_nilai;
+                });
+                return dataSantri;
+            });
+            return res.status(200).json({
+                header,
+                rowData,
+            });
+        } catch (error) {
+            next(new AppError(error.message, 500));
+        }
+    };
+
+    static generateExcelTemplate = async (req, res, next) => {
+        try {
+            const { class: className, type, cat, pekan, bulan } = req.query;
+            const { decoded, semester, tahunAjaran } = await getTokenPayload(
+                req
+            );
+
+            if (!className) {
+                return next(
+                    new AppError("query class tidak boleh kosong", 400)
+                );
+            }
+
+            const rombelWhereClause = { id_tahun_ajaran: tahunAjaran.id };
+            const name = className.split(" - ")[0].trim();
+            let gender = className.split(" - ")[1]?.trim() || null;
+            if (gender === "null") {
+                gender = null;
+            }
+            const ref_kelas = await prisma.ref_kelas.findFirst({
+                where: {
+                    kelas: name,
+                    gender: gender,
+                },
+            });
+            if (!ref_kelas) {
+                return res.status(404).json({ message: "Kelas tidak ditemukan" });
+            }
+            rombelWhereClause["id_kelas"] = parseInt(ref_kelas.id);
+
+            const rombel = await prisma.data_rombel.findFirst({
+                where: rombelWhereClause,
+                include: {
+                    data_rombel_anggota: {
+                        select: {
+                            id_santri: true,
+                        },
+                    },
+                    ref_kelas: true,
+                },
+            });
+
+            console.log(rombel);
+
+            const santriIds = rombel.data_rombel_anggota.map(
+                (anggota) => anggota.id_santri
+            );
+
+            const santriList = await prisma.santri.findMany({
+                where: {
+                    id: {
+                        in: santriIds,
+                    },
+                },
+                select: { id: true, nis: true, nama: true },
+            });
+            // pass data santrilist to excel template generator
+            // const nilaiKatakterList =
+            // 	await prisma.data_nilai_karakter.findMany({
+
+            const karakterWhereClause = {};
+            if (type && type !== "all") {
+                if (type === "asrama") {
+                    karakterWhereClause.id_basis_lokasi = 25;
+                } else if (type === "sekolah") {
+                    karakterWhereClause.id_basis_lokasi = 26;
+                }
+            }
+
+            if (cat && cat !== "all") {
+                const kelompokKarakter =
+                    await prisma.ref_karakter_kategori.findFirst({
+                        where: {
+                            nama: cat,
+                        },
+                        include: {
+                            ref_kriteria_karakter: {
+                                where: {
+                                    is_aktif: true,
+                                },
+                            },
+                        },
+                    });
+                console.log(kelompokKarakter);
+                if (
+                    kelompokKarakter &&
+                    kelompokKarakter.ref_kriteria_karakter
+                ) {
+                    // const kriteriaList =
+                    // 	kelompokKarakter.ref_kriteria_karakter.map((k) => ({
+                    // 		id: k.id,
+                    // 	}));
+                    // karakterWhereClause.id_kriteria = {
+                    // 	in: kriteriaList.map((k) => k.id),
+                    // };
+                    // console.log(kelompokKarakter.ref_kriteria_karakter.map((k) => (k.id)))
+                    karakterWhereClause.id = {
+                        in: kelompokKarakter.ref_kriteria_karakter.map(
+                            (k) => k.id
+                        ),
+                    };
+                } else {
+                    karakterWhereClause.id = { in: [] };
+                }
+            }
+            const kriteria_karakter =
+                await prisma.ref_kriteria_karakter.findMany({
+                    where: karakterWhereClause,
+                    include: {
+                        ref_karakter_kategori: true,
+                        ref_master_kategori: true,
+                    },
+                });
+
+            const header = kriteria_karakter.map((item) => ({
+                id: item.id,
+                kategori: item.ref_karakter_kategori.nama,
+                nama: item.nama,
+                deskripsi: item.deskripsi,
+                basis: item.ref_master_kategori.nama,
+            }));
+
+            console.log("header", header);
+
+            const groupHeader = header.reduce((acc, item) => {
+                if (!acc[item.kategori]) {
+                    acc[item.kategori] = {
+                        items: [],
+                        length: 0,
+                    };
+                }
+                acc[item.kategori].items.push(item);
+                acc[item.kategori].length = acc[item.kategori].items.length;
+                return acc;
+            }, {});
+
+            // console.log(groupHeader);
+
+            karakterWhereClause.id_santri = {
+                in: santriIds,
+            };
+            karakterWhereClause.id_kriteria = {
+                in: kriteria_karakter.map((k) => k.id),
+            };
+            karakterWhereClause.id_semester = semester.id;
+            karakterWhereClause.id_tahun_ajaran = tahunAjaran.id;
+            if (!pekan) {
+                return next(
+                    new AppError("query pekan tidak boleh kosong", 400)
+                );
+            }
+            // if (pekan && pekan !== "all") {
+            karakterWhereClause.minggu = parseInt(pekan);
+            // }
+            if (bulan && bulan !== "all") {
+                karakterWhereClause.bulan = parseInt(bulan);
+            }
+            // console.log(karakterWhereClause);
+            delete karakterWhereClause.id;
+
+            const nilaiSantri = await prisma.data_nilai_karakter.findMany({
+                where: karakterWhereClause,
+                include: {
+                    ref_kriteria_karakter: {
+                        include: {
+                            ref_karakter_kategori: true,
+                        },
+                    },
+                    santri: true,
+                },
+            });
+
+            const nilaiMap = nilaiSantri.map((item) => ({
+                id: item.id,
+                id_santri: item.id_santri,
+                // nama_santri: item.santri.nama,
+                nis_santri: item.santri.nis,
+                nama_santri: item.santri.nama,
+                karakter: item.ref_kriteria_karakter.nama,
+                karakter_id: item.ref_kriteria_karakter.id,
+                kategori: item.ref_kriteria_karakter.ref_karakter_kategori.nama,
+                nilai: item.nilai,
+                // bulan: item.bulan,
+                minggu: item.minggu,
+            }));
+            console.log("niliaMap", nilaiMap);
+
+            // console.log("niliaMap",nilaiMap);
+            // gabung santriList dengan nilaiMap
+            // const santriMap = santriList.reduce((acc, santri) => {
+            // 	acc[santri.id] = santri;
+            // 	return acc;
+            // }, {});
+            // console.log(santriList);
+            const santriListWithNilai = santriList.map((santri) => {
+                const nilaiSantri = nilaiMap.filter(
+                    (n) => n.id_santri === santri.id
+                );
+                return {
+                    ...santri,
+                    nilai: nilaiSantri,
+                };
+            });
             // console.log(santriListWithNilai);
 
             const datas = {
@@ -774,12 +1320,16 @@ export class NilaiKarakterController {
                     nis: santri.nis,
                     nama: santri.nama,
                 };
+                console.log("santri", santri.id);
                 header.forEach((item) => {
+                    console.log("item", item);
                     const nilai = nilaiMap.find(
                         (n) =>
                             n.id_santri === santri.id &&
                             n.karakter_id === item.id
                     );
+
+                    console.log("nilai", nilai);
                     const karakter_nilai = nilai ? nilai.nilai : "";
                     dataSantri[item.nama] = karakter_nilai;
                 });
@@ -824,7 +1374,7 @@ export class NilaiKarakterController {
                 res,
                 groupHeader,
                 rowData,
-                "template_nilai_karakter"
+                `template_nilai_karakter_${className}_${type}_${cat}_pekan_${pekan}_bulan_${bulan}`
                 // "Data Nilai Karakter"
             );
         } catch (error) {
@@ -853,15 +1403,32 @@ export class NilaiKarakterController {
                 );
             }
 
-            const existingNilai = await prisma.data_nilai_karakter.findUnique({
+            const santri = await prisma.santri.findUnique({
                 where: {
-                    bulan: parseInt(bulan),
-                    minggu: parseInt(minggu),
-                    id_santri: parseInt(id_santri),
-                    id_semester: semester.id,
-                    id_tahun_ajaran: tahunAjaran.id,
-                    id_kriteria: parseInt(id_kriteria),
+                    id: parseInt(id_santri),
                 },
+            });
+
+            const karakter = await prisma.ref_kriteria_karakter.findUnique({
+                where: {
+                    id: id_kriteria,
+                },
+            });
+
+
+            const existingNilai = await prisma.data_nilai_karakter.findUnique({
+                where:{
+                    id_santri_id_tahun_ajaran_id_semester_id_kriteria_id_basis_lokasi_bulan_minggu:
+                        {
+                            id_santri: santri.id,
+                            id_tahun_ajaran: tahunAjaran.id,
+                            id_semester: semester.id,
+                            id_kriteria: id_kriteria,
+                            id_basis_lokasi: karakter.id_basis_lokasi,
+                            bulan: parseInt(bulan),
+                            minggu: parseInt(minggu),
+                        },
+                }
             });
 
             if (!existingNilai) {
@@ -872,6 +1439,7 @@ export class NilaiKarakterController {
                         id_santri: parseInt(id_santri),
                         id_kriteria: parseInt(id_kriteria),
                         nilai: parseFloat(nilai),
+                        id_basis_lokasi: karakter.id_basis_lokasi,
                         id_semester: semester.id,
                         id_tahun_ajaran: tahunAjaran.id,
                     },
@@ -885,12 +1453,12 @@ export class NilaiKarakterController {
 
             const updatedNilai = await prisma.data_nilai_karakter.update({
                 where: {
-                    id: parseInt(id),
+                    id: existingNilai.id,
                 },
                 data: {
                     nilai: parseFloat(nilai),
-                    id_semester: semester.id,
-                    id_tahun_ajaran: tahunAjaran.id,
+                    // id_semester: semester.id,
+                    // id_tahun_ajaran: tahunAjaran.id,
                 },
             });
 
@@ -906,18 +1474,14 @@ export class NilaiKarakterController {
 
     static uploadExcelFile = async (req, res, next) => {
         try {
-            const { decoded, semester, tahunAjaran } = await getTokenPayload(
-                req
-            );
-            const { week, month } = req.query;
-            if (!week) {
-                return next(new AppError("Query week tidak boleh kosong", 400));
+            const { decoded, semester, tahunAjaran } = await getTokenPayload(req);
+            const { pekan, bulan } = req.query;
+            if (!pekan) {
+                return next(new AppError("Query pekan tidak boleh kosong", 400));
             }
 
-            if (!month) {
-                return next(
-                    new AppError("Query month tidak boleh kosong", 400)
-                );
+            if (!bulan) {
+                return next(new AppError("Query bulan tidak boleh kosong", 400));
             }
 
             if (!req.file) {
@@ -930,13 +1494,7 @@ export class NilaiKarakterController {
             }
 
             const keys = Object.keys(data[0]);
-            // hapus kolom nis dan nama dari keys
-            // delete keys[keys.indexOf("nis")];
-            // delete keys[keys.indexOf("nama")];
-
-            const filteredKeys = keys.filter(
-                (key) => key !== "nis" && key !== "nama"
-            );
+            const filteredKeys = keys.filter((key) => key !== "nis" && key !== "nama");
             console.log("filteredKeys", filteredKeys);
 
             const dictKarakter = await prisma.ref_kriteria_karakter.findMany({
@@ -956,68 +1514,50 @@ export class NilaiKarakterController {
                 return acc;
             }, {});
 
-            // console.log("keys", keys);
-            let errorData = [];
+            const results = {
+                successful: [],
+                errors: [],
+                totalProcessed: data.length,
+            };
 
-            for (const item of data) {
+            for (const [index, item] of data.entries()) {
+                const rowNumber = index + 2; // Baris dimulai dari 2 di Excel (1 untuk header)
                 try {
                     await prisma.$transaction(async (tx) => {
                         const { nis, nama, ...nilai } = item;
-                        console.log("nis", nis);
-                        console.log("nama", nama);
-                        console.log("nilai", nilai);
 
-                        // cari santri berdasarkan nis
+                        // Cari santri berdasarkan nis
                         const santri = await tx.santri.findFirst({
                             where: {
-                                nis: nis,
+                                nis: nis.toString(),
                             },
                         });
 
                         if (!santri) {
-                            throw new AppError(
-                                `Santri dengan NIS ${nis} tidak ditemukan`,
-                                404
-                            );
+                            throw new AppError(`Santri dengan NIS ${nis} tidak ditemukan`, 404);
                         }
 
-                        // for (const key in nilai) {
+                        // Proses setiap nilai karakter
                         for (const [key, value] of Object.entries(nilai)) {
-                            // console.log("key", key);
-                            // console.log("nilai[key]", nilai[key]);
-                            // console.log("karakterMap[key]", karakterMap[key]);
+                            if (value === "") continue;
 
-                            if (nilai[key] === "") continue;
-                            // console.log("data", {
-                            // 	bulan: parseInt(month),
-                            // 			minggu: parseInt(week),
-                            // 			id_santri: santri.id,
-                            // 			nilai: parseInt(value),
-                            // 			id_semester: semester.id,
-                            // 			id_tahun_ajaran: tahunAjaran.id,
-                            // 			id_kriteria: karakterMap[key]
-                            // });
-                            // continue
-                            const existingNilai =
-                                await tx.data_nilai_karakter.findUnique({
-                                    where: {
-                                        id_santri_id_tahun_ajaran_id_semester_id_kriteria_id_basis_lokasi_bulan_minggu: {
-                                            id_santri: santri.id,
-                                            id_tahun_ajaran: tahunAjaran.id,
-                                            id_semester: semester.id,
-                                            id_kriteria: karakterMap[key].id,
-                                            id_basis_lokasi:
-                                            karakterMap[key].basis_lokasi,
-                                            bulan: parseInt(month),
-                                            minggu: parseInt(week),
-                                        }
+                            const existingNilai = await tx.data_nilai_karakter.findUnique({
+                                where: {
+                                    id_santri_id_tahun_ajaran_id_semester_id_kriteria_id_basis_lokasi_bulan_minggu: {
+                                        id_santri: santri.id,
+                                        id_tahun_ajaran: tahunAjaran.id,
+                                        id_semester: semester.id,
+                                        id_kriteria: karakterMap[key].id,
+                                        id_basis_lokasi: karakterMap[key].basis_lokasi,
+                                        bulan: parseInt(bulan),
+                                        minggu: parseInt(pekan),
                                     },
-                                });
+                                },
+                            });
+
                             if (existingNilai) {
                                 await tx.data_nilai_karakter.update({
-                                    where: {
-                                        id: existingNilai.id,
-                                    },
+                                    where: { id: existingNilai.id },
                                     data: {
                                         nilai: parseInt(value),
                                         id_semester: semester.id,
@@ -1027,49 +1567,45 @@ export class NilaiKarakterController {
                             } else {
                                 await tx.data_nilai_karakter.create({
                                     data: {
-                                        bulan: parseInt(month),
-                                        minggu: parseInt(week),
+                                        bulan: parseInt(bulan),
+                                        minggu: parseInt(pekan),
                                         id_santri: santri.id,
                                         nilai: parseInt(value),
                                         id_semester: semester.id,
                                         id_tahun_ajaran: tahunAjaran.id,
                                         id_kriteria: karakterMap[key].id,
-                                        id_basis_lokasi:
-                                        karakterMap[key].basis_lokasi,
+                                        id_basis_lokasi: karakterMap[key].basis_lokasi,
                                     },
                                 });
                             }
                         }
-                        // cek apakah nilai sudah ada
+
+                        // Tambahkan ke daftar berhasil
+                        results.successful.push({
+                            row: rowNumber,
+                            id: santri.id,
+                            nama: santri.nama,
+                        });
                     });
                 } catch (error) {
-                    console.log("error", error);
-                    if (error instanceof AppError) {
-                        errorData.push({
-                            nis: item.nis,
-                            nama: item.nama,
-                            error: error.message,
-                        });
-                    } else {
-                        errorData.push({
-                            nis: item.nis,
-                            nama: item.nama,
-                            error:
-                                error.message ||
-                                "Terjadi kesalahan saat memproses data",
-                        });
-                    }
+                    let errorMessage = error instanceof AppError
+                        ? error.message
+                        : error.message || "Terjadi kesalahan saat memproses data";
+
+                    results.errors.push({
+                        row: rowNumber,
+                        error: errorMessage,
+                    });
                 }
             }
 
-            // console.log(data);
-            // console.log(filePath);
-            res.status(200).json({
-                success: true ? errorData.length === 0 : false,
-                message: errorData.length
-                    ? "Beberapa data gagal diupload"
-                    : "Data berhasil diupload",
-                errorData: errorData,
+            res.status(201).json({
+                message: 'Proses import selesai',
+                totalProcessed: results.totalProcessed,
+                successfulCount: results.successful.length,
+                errorCount: results.errors.length,
+                successful: results.successful,
+                errors: results.errors,
             });
         } catch (error) {
             next(new AppError(error.message, 500));

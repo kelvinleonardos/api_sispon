@@ -37,7 +37,7 @@ export const getAllRombel = async (req, res, next) => {
             return {
                 ...rest,
                 status: ref_master_kategori.nama,
-                kelas: ref_kelas.kelas,
+                kelas: `${ref_kelas.kelas} - ${ref_kelas.gender}`,
             };
         });
 

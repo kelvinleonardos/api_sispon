@@ -323,38 +323,19 @@
         </tr>
       </thead>
       <tbody>
+      <% data.kehadiran.forEach((k, index) => { %>
         <tr>
           <td style="width: 10%;">
-            Sakit
+            <%= k.status %>
           </td>
           <td style="width: 5%; border-right: none;">
-            : 41
+            : <%= k.jumlah %>
           </td>
           <td style="width: 5%; border-left: none;">
             hari
           </td>
         </tr>
-        <tr>
-          <td>
-            Izin
-          </td>
-          <td style="width: 5%; border-right: none;">
-            : 41
-          </td>
-          <td style="width: 5%; border-left: none;">
-            hari
-          </td>
-        </tr>
-        <tr>
-          <td>
-            Tanpa Keterangan
-          </td>
-          <td style="width: 5%; border-right: none;">
-            : 41
-          </td>
-          <td style="width: 5%; border-left: none;">
-            hari
-          </td>
+      <% }) %>
       </tbody>
     </table>
   </div>

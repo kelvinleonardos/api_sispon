@@ -100,10 +100,11 @@ export class KelasController {
       });
 
       const mappedKelas = kelas.map((kelas) => {
-        const { ref_tingkat, ...rest } = kelas;
+        const { ref_tingkat, kelas: kelasName, ...rest } = kelas; // Destruktur kelas sebagai kelasName
         return {
+          kelas: `${kelasName || '-'} - ${kelas.gender || '-'}`,
           ...rest,
-          tingkat: ref_tingkat? ref_tingkat.tingkat : '-',
+          tingkat: ref_tingkat ? ref_tingkat.tingkat : '-',
         };
       });
 

@@ -74,11 +74,20 @@ export class RosterController {
             let ref_kelas = null;
 
             if (className) {
+                const name = className.split(" - ")[0].trim();
+                let gender = className.split(" - ")[1]?.trim() || null;
+                if (gender === "null") {
+                    gender = null;
+                }
                 ref_kelas = await prisma.ref_kelas.findFirst({
                     where: {
-                        kelas: className
-                    }
+                        kelas: name,
+                        gender: gender,
+                    },
                 });
+                if (!ref_kelas) {
+                    return res.status(404).json({ message: "Kelas tidak ditemukan" });
+                }
             }
 
             // Fetch all rombels for the semester and year

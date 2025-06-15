@@ -7,7 +7,7 @@ import { authenticate } from '../middleware/auth.middleware.js';
 import { upload } from '../middleware/upload.middleware.js';
 
 
-router.use(authenticate);
+// router.use(authenticate);
 router.get('/', NilaiKarakterController.getAllNilaiKarakter);
 router.get('/rangking', NilaiKarakterController.getRangkingNilaiKarakter);
 router.get('/download-template', NilaiKarakterController.generateExcelTemplate);

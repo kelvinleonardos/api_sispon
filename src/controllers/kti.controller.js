@@ -13,11 +13,19 @@ export class KtiController {
                 id_tahun_ajaran: semester.id_tahun_ajaran,
             };
             if (className) {
+                const name = className.split(" - ")[0].trim();
+                let gender = className.split(" - ")[1]?.trim() || null;
+                if (gender === "null") {
+                    gender = null;
+                }
                 const ref_kelas = await prisma.ref_kelas.findFirst({
-                    where: { kelas: className },
+                    where: {
+                        kelas: name,
+                        gender: gender,
+                    },
                 });
                 if (!ref_kelas) {
-                    return res.status(404).json({ error: "Kelas tidak ditemukan" });
+                    return res.status(404).json({ message: "Kelas tidak ditemukan" });
                 }
                 whereClause.id_kelas = ref_kelas.id;
             }

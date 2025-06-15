@@ -85,14 +85,22 @@ export class PrestasiPelanggaranController {
             const { groupbyclass, class: className, type, cat } = req.query;
             const { decoded, semester, tahunAjaran } = await getTokenPayload(req);
 
-            const ref_kelas = await prisma.ref_kelas.findFirst({
-                where: {
-                    kelas: className,
-                }
-            });
-
             const whereClause = { id_tahun_ajaran: tahunAjaran.id };
             if (className) {
+                const name = className.split(" - ")[0].trim();
+                let gender = className.split(" - ")[1]?.trim() || null;
+                if (gender === "null") {
+                    gender = null;
+                }
+                const ref_kelas = await prisma.ref_kelas.findFirst({
+                    where: {
+                        kelas: name,
+                        gender: gender,
+                    },
+                });
+                if (!ref_kelas) {
+                    return res.status(404).json({ message: "Kelas tidak ditemukan" });
+                }
                 whereClause["id_kelas"] = parseInt(ref_kelas.id);
             }
 
@@ -600,10 +608,10 @@ export class PrestasiPelanggaranController {
         }
     };
 
-    static printPrestasiPelanggaran = async (req, res, next) => {
+    static async printPrestasiPelanggaran(req, res, next) {
         try {
             const { decoded, semester, tahunAjaran } = await getTokenPayload(req);
-            const { month } = req.query; // month diharapkan dalam format angka (1-12)
+            const { month, cat, type } = req.query; // month diharapkan dalam format angka (1-12)
             const id_tahun_ajaran = tahunAjaran.id;
 
             const tahunAjaranData = await prisma.ref_tahun_ajaran.findFirst({
@@ -647,13 +655,28 @@ export class PrestasiPelanggaranController {
                     return acc;
                 }, {});
 
-                // Build prestasi where clause (only prestasi)
+                // Build prestasi/pelanggaran where clause
                 let prestasiWhere = {
                     id_santri: { in: anggotaIds },
-                    perihal: "prestasi",
                 };
 
-                // Fetch prestasi data
+                // Filter by category (prestasi, pelanggaran, or both)
+                if (cat === 'pr') {
+                    prestasiWhere.perihal = 'prestasi';
+                } else if (cat === 'pl') {
+                    prestasiWhere.perihal = 'pelanggaran';
+                }
+
+                // Filter by type (asrama, sekolah)
+                if (type && type !== 'all') {
+                    if (type === 'asrama') {
+                        prestasiWhere.id_basis_lokasi = 25;
+                    } else if (type === 'sekolah') {
+                        prestasiWhere.id_basis_lokasi = 26;
+                    }
+                }
+
+                // Fetch prestasi/pelanggaran data
                 const prestasiList = await prisma.data_prestasi_pelanggaran.findMany({
                     where: prestasiWhere,
                     include: {
@@ -668,7 +691,6 @@ export class PrestasiPelanggaranController {
                     if (!isNaN(monthNum) && monthNum >= 1 && monthNum <= 12) {
                         filteredPrestasiList = prestasiList.filter((item) => {
                             if (item.tanggal) {
-                                // Asumsi tanggal disimpan dalam format Date atau string "DD-MM-YYYY"
                                 const date = new Date(item.tanggal);
                                 return date.getMonth() + 1 === monthNum; // getMonth() mengembalikan 0-11, jadi tambah 1
                             }
@@ -679,7 +701,7 @@ export class PrestasiPelanggaranController {
                     }
                 }
 
-                // Group prestasi by student
+                // Group prestasi/pelanggaran by student
                 const prestasiMap = filteredPrestasiList.reduce((acc, item) => {
                     if (!acc[item.id_santri]) {
                         acc[item.id_santri] = [];
@@ -698,7 +720,7 @@ export class PrestasiPelanggaranController {
                     return acc;
                 }, {});
 
-                // Create student list with prestasi data, only include students with prestasi
+                // Create student list with prestasi/pelanggaran data, only include students with data
                 const simplifiedStudents = rombel.data_rombel_anggota
                     .filter((anggota) => santriMap[anggota.id_santri] && prestasiMap[anggota.id_santri])
                     .map((anggota) => ({
@@ -744,7 +766,7 @@ export class PrestasiPelanggaranController {
             // Define template path and PDF settings
             const templatePath = path.join(__dirname, "../../public/pdf_template/daftar_prestasi_pelanggaran.ejs");
             const orientation = "Landscape";
-            const filename = `Daftar_Prestasi_${tahunAjaranData.nama}.pdf`;
+            const filename = `Daftar_${cat === 'pr' ? 'Prestasi' : cat === 'pl' ? 'Pelanggaran' : 'Prestasi_Pelanggaran'}_${tahunAjaranData.nama}.pdf`;
 
             console.log(JSON.stringify(pdfData, null, 2));
 
@@ -754,5 +776,5 @@ export class PrestasiPelanggaranController {
             console.error("Error generating PDF:", error);
             next(error);
         }
-    };
+    }
 }
